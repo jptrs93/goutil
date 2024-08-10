@@ -8,7 +8,7 @@ import (
 const (
 	Month        = time.Hour * 24 * 30
 	Day          = time.Hour * 24
-	RFC3339Milli = "YYYY-MM-DDTHH:MM:SS.sssZ"
+	RFC3339Milli = "2006-01-02T15:04:05.000Z"
 )
 
 func MustParse(val string) time.Time {
