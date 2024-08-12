@@ -173,3 +173,11 @@ func RemoveDuplicates[T comparable](s []T) []T {
 
 	return result
 }
+
+func Generate[T any](n int, producer func() T) []T {
+	res := make([]T, 0, n)
+	for i := 0; i < n; i++ {
+		res = append(res, producer())
+	}
+	return res
+}
