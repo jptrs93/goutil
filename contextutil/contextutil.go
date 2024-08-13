@@ -18,13 +18,13 @@ func ContextWithCleanup(ctx context.Context) (context.Context, context.CancelCau
 	cancelCauseFuncWrapper := func(err error) {
 		mu.Lock()
 		defer mu.Unlock()
-		cancelCauseFunc(err)
 		for _, cleanup := range cleanups {
 			if cleanup != nil {
 				cleanup()
 			}
 		}
 		clear(cleanups)
+		cancelCauseFunc(err)
 	}
 	return ctx, cancelCauseFuncWrapper, registerCleanup
 }
