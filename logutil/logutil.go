@@ -10,6 +10,20 @@ import (
 
 const LogContextKey = "_logContext"
 
+func ExtendLogContext(ctx context.Context, additionalContext string) context.Context {
+	if existingLogContext, ok := ctx.Value(LogContextKey).(string); ok {
+		return context.WithValue(ctx, LogContextKey, existingLogContext+additionalContext)
+	}
+	return context.WithValue(ctx, LogContextKey, additionalContext)
+}
+
+func GetLogContext(ctx context.Context) string {
+	if existingLogContext, ok := ctx.Value(LogContextKey).(string); ok {
+		return existingLogContext
+	}
+	return ""
+}
+
 type PlainLogHandler struct {
 	Writer io.Writer
 	Level  slog.Level
