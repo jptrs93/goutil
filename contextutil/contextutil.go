@@ -8,7 +8,7 @@ import (
 func ContextWithCleanup(ctx context.Context) (context.Context, context.CancelCauseFunc, func(func())) {
 	ctx, cancelCauseFunc := context.WithCancelCause(context.Background())
 	mu := sync.Mutex{}
-	var cleanups []func()
+	cleanups := []func(){}
 
 	registerCleanup := func(cleanup func()) {
 		mu.Lock()
@@ -20,7 +20,9 @@ func ContextWithCleanup(ctx context.Context) (context.Context, context.CancelCau
 		defer mu.Unlock()
 		cancelCauseFunc(err)
 		for _, cleanup := range cleanups {
-			cleanup()
+			if cleanup != nil {
+				cleanup()
+			}
 		}
 		clear(cleanups)
 	}
