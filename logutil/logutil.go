@@ -35,8 +35,10 @@ func (h *PlainLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (h *PlainLogHandler) Handle(ctx context.Context, r slog.Record) error {
 	logContext := ""
-	if v, ok := ctx.Value(LogContextKey).(string); ok {
-		logContext = " " + v
+	if ctx != nil {
+		if v, ok := ctx.Value(LogContextKey).(string); ok {
+			logContext = " " + v
+		}
 	}
 	// make the level strings all the same length
 	var levelStr string
