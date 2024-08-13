@@ -64,42 +64,42 @@ func (s *StripedStringIDLocks) Unlock(id string) {
 	s.mutexes[s.hash(id)%s.count].Unlock()
 }
 
-type IDLocks struct {
-	m SyncMap[string, *sync.Mutex]
+type IDLocks[T comparable] struct {
+	m SyncMap[T, *sync.Mutex]
 }
 
-func (l *IDLocks) Lock(id string) {
+func (l *IDLocks[T]) Lock(id T) {
 	mutex, _ := l.m.LoadOrStore(id, &sync.Mutex{})
 	mutex.Lock()
 }
 
-func (l *IDLocks) Unlock(id string) {
+func (l *IDLocks[T]) Unlock(id T) {
 	if mutex, ok := l.m.Load(id); ok {
 		mutex.Unlock()
 	}
 }
 
-type RWIDLocks struct {
-	m SyncMap[string, *sync.RWMutex] // Map of string ID to *sync.Mutex
+type RWIDLocks[T comparable] struct {
+	m SyncMap[T, *sync.RWMutex] // Map of string ID to *sync.Mutex
 }
 
-func (l *RWIDLocks) Lock(id string) {
+func (l *RWIDLocks[T]) Lock(id T) {
 	mutex, _ := l.m.LoadOrStore(id, &sync.RWMutex{})
 	mutex.Lock()
 }
 
-func (l *RWIDLocks) Unlock(id string) {
+func (l *RWIDLocks[T]) Unlock(id T) {
 	if mutex, ok := l.m.Load(id); ok {
 		mutex.Unlock()
 	}
 }
 
-func (l *RWIDLocks) RLock(id string) {
+func (l *RWIDLocks[T]) RLock(id T) {
 	mutex, _ := l.m.LoadOrStore(id, &sync.RWMutex{})
 	mutex.RLock()
 }
 
-func (l *RWIDLocks) RUnlock(id string) {
+func (l *RWIDLocks[T]) RUnlock(id T) {
 	if mutex, ok := l.m.Load(id); ok {
 		mutex.RUnlock()
 	}
