@@ -10,7 +10,7 @@ import (
 
 func IsTestBasedOnArgs() bool {
 	for _, arg := range os.Args {
-		if arg == "-test.v" || arg == "-test.run" || arg == "-test.timeout" || strings.HasPrefix(arg, "-test.run") {
+		if arg == "-test.v" || arg == "-test.run" || arg == "-test.timeout" || strings.HasPrefix(arg, "-test.") {
 			return true
 		}
 	}
