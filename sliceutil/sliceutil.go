@@ -181,3 +181,26 @@ func Generate[T any](n int, producer func() T) []T {
 	}
 	return res
 }
+
+func Reverse[T any](s []T) []T {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+	return s
+}
+
+func BoolMap[T comparable](s []T) map[T]bool {
+	m := make(map[T]bool, len(s))
+	for _, obj := range s {
+		m[obj] = true
+	}
+	return m
+}
+
+func Flatten[T any](s [][]T) []T {
+	res := make([]T, 0, len(s))
+	for _, obj := range s {
+		res = append(res, obj...)
+	}
+	return res
+}
