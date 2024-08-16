@@ -2,7 +2,6 @@ package fileutil
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 )
 
@@ -18,7 +17,6 @@ func AppendTo(fileName string, data []byte) error {
 }
 
 func EnsureDir(path string) error {
-	slog.Info(fmt.Sprintf("creating dir: %v", path))
 	if err := os.MkdirAll(path, os.ModePerm); err != nil {
 		return err
 	}
@@ -26,7 +24,6 @@ func EnsureDir(path string) error {
 }
 
 func MustEnsureDir(path string) {
-	slog.Info(fmt.Sprintf("creating dir: %v", path))
 	if err := os.MkdirAll(path, os.ModePerm); err != nil {
 		panic(fmt.Sprintf("failed creating dir %v: %v", path, err))
 	}
