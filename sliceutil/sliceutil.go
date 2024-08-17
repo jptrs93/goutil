@@ -169,7 +169,7 @@ func Bisect[T any](slice []T, less func(a T) bool) int {
 		}
 	}
 	return low
-}q
+}
 
 func Copy[T any](original []T) []T {
 	newSlice := make([]T, len(original))
