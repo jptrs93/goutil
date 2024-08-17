@@ -47,3 +47,25 @@ func MaxTime(v ...time.Time) time.Time {
 	}
 	return winner
 }
+
+func IsoWeekStartEnd(year int, week int) (time.Time, time.Time) {
+
+	startDate := time.Date(year, time.January, 1, 0, 0, 0, 0, time.UTC)
+	_, isoWeek := startDate.ISOWeek()
+
+	if isoWeek != 1 {
+		startDate = startDate.AddDate(0, 0, (8-int(startDate.Weekday()))%7) // Move to the next Monday
+		_, isoWeek = startDate.ISOWeek()
+	}
+
+	weekDifference := week - isoWeek
+	weekStart := startDate.AddDate(0, 0, weekDifference*7)
+
+	calculatedYear, calculatedWeek := weekStart.ISOWeek()
+	if calculatedYear != year || calculatedWeek != week {
+		panic("invalid year/week combination")
+	}
+
+	weekEnd := weekStart.AddDate(0, 0, 6).Add(time.Hour * 24)
+	return weekStart, weekEnd
+}

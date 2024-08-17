@@ -142,18 +142,34 @@ func InsortFunc[T any](slice []T, value T, less func(a, b T) bool) []T {
 	return slice
 }
 
-func Bisect[T any](slice []T, item T, less func(a, b T) bool) int {
+func BisectRight[T any](slice []T, less func(a T) bool) int {
 	low, high := 0, len(slice)
 	for low < high {
 		mid := (low + high) / 2
-		if less(slice[mid], item) {
+		if less(slice[mid]) {
+			low = mid + 1
+		} else {
+			high = mid
+		}
+	}
+	for low < len(slice) && !less(slice[low]) {
+		low++
+	}
+	return low
+}
+
+func Bisect[T any](slice []T, less func(a T) bool) int {
+	low, high := 0, len(slice)
+	for low < high {
+		mid := (low + high) / 2
+		if less(slice[mid]) {
 			low = mid + 1
 		} else {
 			high = mid
 		}
 	}
 	return low
-}
+}q
 
 func Copy[T any](original []T) []T {
 	newSlice := make([]T, len(original))
