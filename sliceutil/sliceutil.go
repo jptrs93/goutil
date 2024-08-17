@@ -204,3 +204,11 @@ func Flatten[T any](s [][]T) []T {
 	}
 	return res
 }
+
+func CreateBatches[T any](s []T, batchSize int) [][]T {
+	res := make([][]T, 0, (len(s)+batchSize-1)/batchSize)
+	for i := 0; i < len(s); i += batchSize {
+		res = append(res, s[i:min(i+batchSize, len(s))])
+	}
+	return res
+}
