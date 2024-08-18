@@ -223,14 +223,6 @@ func BoolMap[T comparable](s []T) map[T]bool {
 	return m
 }
 
-func Flatten[T any](s [][]T) []T {
-	res := make([]T, 0, len(s))
-	for _, obj := range s {
-		res = append(res, obj...)
-	}
-	return res
-}
-
 func CreateBatches[T any](s []T, batchSize int) [][]T {
 	res := make([][]T, 0, (len(s)+batchSize-1)/batchSize)
 	for i := 0; i < len(s); i += batchSize {
