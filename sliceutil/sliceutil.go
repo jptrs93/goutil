@@ -2,6 +2,7 @@ package sliceutil
 
 import (
 	"cmp"
+	"golang.org/x/exp/constraints"
 	"time"
 )
 
@@ -119,56 +120,65 @@ func AnyMatch[T any](items []T, f func(j T) bool) bool {
 	return false
 }
 
-// InsortFunc inserts an element into a sorted slice while maintaining the order
-// using a custom comparison function. The comparison function should return
-// a negative number if the first element is less than the second,
-// zero if they are equal, and a positive number if the first element is greater.
-func InsortFunc[T any](slice []T, value T, less func(a, b T) bool) []T {
-	// Find the correct position to insert the value
-	pos := 0
-	for i, v := range slice {
-		if less(value, v) {
-			pos = i
-			break
-		}
-		pos = i + 1
-	}
-
-	// Insert the value at the correct position
-	slice = append(slice, value) // Increase the slice length by one
-	copy(slice[pos+1:], slice[pos:])
-	slice[pos] = value
-
-	return slice
+func InsortFunc[T any](s []T, value T, less func(a T) bool) []T {
+	pos := BisectFunc(s, less)
+	s = append(s, value)
+	copy(s[pos+1:], s[pos:])
+	s[pos] = value
+	return s
 }
 
-func BisectRight[T any](slice []T, less func(a T) bool) int {
-	low, high := 0, len(slice)
-	for low < high {
-		mid := (low + high) / 2
-		if less(slice[mid]) {
-			low = mid + 1
-		} else {
-			high = mid
-		}
+func BisectFilterFunc[T any](items []T, startLess, endLess func(item T) bool) []T {
+	end := BisectFunc(items, endLess)
+	if end == 0 {
+		return nil
 	}
-	for low < len(slice) && !less(slice[low]) {
-		low++
+	start := BisectFunc(items, startLess)
+	if start >= end {
+		return nil
 	}
-	return low
+	return items[start:end]
 }
 
-func Bisect[T any](slice []T, less func(a T) bool) int {
-	low, high := 0, len(slice)
+// BisectFunc less should return true for items left of the insertion point
+func BisectFunc[T any](s []T, less func(T) bool) int {
+	low, high := 0, len(s)
 	for low < high {
 		mid := (low + high) / 2
-		if less(slice[mid]) {
+		if less(s[mid]) {
 			low = mid + 1
 		} else {
 			high = mid
 		}
 	}
 	return low
+}
+
+func BisectFilter[T constraints.Ordered](s []T, startInclusive, endExclusive T) []T {
+	return BisectFilterFunc(s, func(t T) bool { return t < startInclusive }, func(t T) bool { return t < endExclusive })
+}
+
+func Bisect[T constraints.Ordered](s []T, v T) int {
+	return BisectFunc(s, func(t T) bool {
+		return t < v
+	})
+}
+
+func BisectRight[T constraints.Ordered](s []T, v T) int {
+	return BisectFunc(s, func(t T) bool {
+		return t <= v
+	})
+}
+func Insort[T constraints.Ordered](s []T, v T) []T {
+	return InsortFunc(s, v, func(t T) bool {
+		return t < v
+	})
+}
+
+func InsortRight[T constraints.Ordered](s []T, v T) []T {
+	return InsortFunc(s, v, func(t T) bool {
+		return t <= v
+	})
 }
 
 func Copy[T any](original []T) []T {
