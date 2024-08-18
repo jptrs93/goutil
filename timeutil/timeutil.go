@@ -69,3 +69,9 @@ func IsoWeekStartEnd(year int, week int) (time.Time, time.Time) {
 	weekEnd := weekStart.AddDate(0, 0, 6).Add(time.Hour * 24)
 	return weekStart, weekEnd
 }
+
+func TruncateIsoWeek(t time.Time) time.Time {
+	y, w := t.ISOWeek()
+	s, _ := IsoWeekStartEnd(y, w)
+	return s
+}
