@@ -238,3 +238,23 @@ func CreateBatches[T any](s []T, batchSize int) [][]T {
 	}
 	return res
 }
+
+func Flatten[T any](data [][]T) []T {
+	buffer := make([]T, 0, len(data)*len(data[0]))
+	for _, b := range data {
+		buffer = append(buffer, b...)
+	}
+	return buffer
+}
+
+func Unflatten[T any](data []T, rowLength int) [][]T {
+	result := make([][]T, 0, len(data)/rowLength)
+	for i := 0; i < len(data); i += rowLength {
+		end := i + rowLength
+		if end > len(data) {
+			end = len(data)
+		}
+		result = append(result, data[i:end])
+	}
+	return result
+}

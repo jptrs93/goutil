@@ -1,6 +1,7 @@
 package sliceutil
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"testing"
@@ -89,5 +90,23 @@ func TestBisectRight(t *testing.T) {
 				t.Errorf("BisectFilter() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFlatten(t *testing.T) {
+	n := 6 * 4
+	size := 100 * n
+	randomBytes := make([]byte, size)
+
+	unflat := Unflatten(randomBytes, n)
+
+	if len(unflat) != 100 {
+		t.Errorf("Unflatten() returned wrong length: got %v, want 100", len(unflat))
+	}
+
+	flat := Flatten(unflat)
+
+	if !bytes.Equal(flat, randomBytes) {
+		t.Errorf("Flatten() = %v, want %v", flat, randomBytes)
 	}
 }
