@@ -62,7 +62,7 @@ func IsoWeekStartEnd(year int, week int) (time.Time, time.Time) {
 	weekStart := startDate.AddDate(0, 0, weekDifference*7)
 
 	calculatedYear, calculatedWeek := weekStart.ISOWeek()
-	if calculatedYear != year || calculatedWeek != week {
+	if calculatedYear != year || calculatedWeek != week || weekStart.Weekday() != time.Monday {
 		panic("invalid year/week combination")
 	}
 
