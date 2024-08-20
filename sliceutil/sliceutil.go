@@ -223,6 +223,14 @@ func BoolMap[T comparable](s []T) map[T]bool {
 	return m
 }
 
+func SetMap[T comparable](s []T) map[T]struct{} {
+	m := make(map[T]struct{}, len(s))
+	for _, obj := range s {
+		m[obj] = struct{}{}
+	}
+	return m
+}
+
 func CreateBatches[T any](s []T, batchSize int) [][]T {
 	res := make([][]T, 0, (len(s)+batchSize-1)/batchSize)
 	for i := 0; i < len(s); i += batchSize {
