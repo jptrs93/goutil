@@ -163,61 +163,27 @@ func (c *sseStreamer) Read() ([]byte, error) {
 }
 
 type LineStreamer struct {
-	r         io.Reader
-	buf       []byte
+	bufReader *bufio.Reader
+	line      []byte
 	err       error
-	nextBytes []byte
 }
 
 func NewLineStreamer(in io.Reader) Streamer[[]byte] {
 	return &LineStreamer{
-		r:         in,
-		buf:       make([]byte, 0, 10*4096),
-		nextBytes: make([]byte, 4096),
+		bufReader: bufio.NewReader(in),
 	}
 }
 
 func (s *LineStreamer) Read() ([]byte, error) {
-	var line []byte
-
 	if s.err != nil {
-		if errors.Is(s.err, io.EOF) {
-			if len(s.buf) == 0 {
-				return line, s.err
-			}
-			i := bytes.Index(s.buf, []byte("\n"))
-			if i != -1 {
-				line = s.buf[:i]
-				s.buf = s.buf[i+1:]
-				return line, nil
-			}
-			line = s.buf
-			s.buf = s.buf[len(s.buf):]
-			return line, nil
-		}
+		return nil, s.err
 	}
-
-	i := bytes.Index(s.buf, []byte("\n"))
-	if i != -1 {
-		line = s.buf[:i]
-		s.buf = s.buf[i+1:]
-		return line, nil
+	s.line, s.err = s.bufReader.ReadBytes('\n')
+	if s.err != nil && errors.Is(s.err, io.EOF) {
+		// we want io.EOF to be returned after the last actual data item
+		return s.line, nil
 	}
-
-	var n int
-	for {
-		n, s.err = s.r.Read(s.nextBytes)
-		if s.err != nil {
-			s.buf = append(s.buf, s.nextBytes[:n]...)
-			return s.Read()
-		}
-		i := bytes.Index(s.nextBytes[:n], []byte("\n"))
-		if i != -1 {
-			line = append(s.buf, s.nextBytes[:i]...)
-			s.buf = s.nextBytes[i+1 : n]
-			return line, nil
-		}
-	}
+	return s.line, s.err
 }
 
 type byteStreamReader struct {
