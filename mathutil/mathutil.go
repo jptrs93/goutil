@@ -48,3 +48,14 @@ func Median(values []float64) float64 {
 	}
 	return sorted[mid]
 }
+
+func Mean(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, v := range values {
+		sum += v
+	}
+	return sum / float64(len(values))
+}
