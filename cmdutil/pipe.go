@@ -86,7 +86,6 @@ func ReadData(thisRead *os.File) ([]byte, error) {
 	}
 
 	n = bytesToInt(buf)
-	slog.Debug(fmt.Sprintf("fitter process bytes to read %v", n))
 
 	buf = make([]byte, n) // Buffer to hold the incoming data
 	bytesRead, err = thisRead.Read(buf)
@@ -101,7 +100,6 @@ func ReadData(thisRead *os.File) ([]byte, error) {
 
 func WriteData(data []byte, goWrite *os.File) error {
 
-	slog.Debug(fmt.Sprintf("write data num bytes: %v", len(data)))
 	_, err := goWrite.Write(intToBytes(len(data)))
 	if err != nil {
 		return err

@@ -11,9 +11,8 @@ import (
 
 // Streamer reads items from a stream typically an underlying io.Reader
 //
-// Read returns the next object from the stream. Should
-// return io.EOF when no more objects are available
-// note io.EOF should return on Read call after the last item not with the last item!!
+// Read returns the next object from the stream and io.EOF when there are no more items
+// Note io.EOF should be returned on the Read call after the last item not with the last item!!
 type Streamer[T any] interface {
 	Read() (T, error)
 }
