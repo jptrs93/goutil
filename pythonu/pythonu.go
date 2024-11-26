@@ -186,8 +186,19 @@ func (w *PythonWrapper) InitProcess() (int, error) {
 
 	slog.InfoContext(ctx, "waiting for python script ready signal")
 
+	readySignalReceived := make(chan struct{})
+	defer close(readySignalReceived)
+	go func() {
+		select {
+		case <-time.After(15 * time.Second):
+			cancelCauseFunc(errors.New("timed out waiting for 'ready' signal from python script"))
+		case <-ctx.Done():
+		case <-readySignalReceived:
+		}
+	}()
+
 	buf := []byte("ready")
-	n, err := com.ThisRead.Read(buf)
+	n, err := io.ReadFull(com.ThisRead, buf)
 	if err != nil {
 		cancelCauseFunc(fmt.Errorf("failed to read 'ready' signal from python script: %w", err))
 		return 0, context.Cause(ctx)
@@ -230,7 +241,7 @@ func Call[T any](w *PythonWrapper, pythonFunctionName string, inputObj any) (T, 
 	}
 
 	var resultData []byte
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 
 	go func() {
 		resultData, err = cmdu.ReadData(w.Com.ThisRead)

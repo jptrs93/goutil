@@ -50,18 +50,7 @@ func ContextWithCleanup(ctx context.Context, cleanups ...func()) (context.Contex
 }
 
 func WithTimeoutCancelCause(parent context.Context, timeout time.Duration) (context.Context, context.CancelCauseFunc) {
-	child, cancel := context.WithCancelCause(parent)
-	var once sync.Once
-	var timer *time.Timer
-	timer = time.AfterFunc(timeout, func() {
-		once.Do(func() {
-			cancel(context.DeadlineExceeded)
-		})
-	})
-	return child, func(cause error) {
-		once.Do(func() {
-			timer.Stop()
-			cancel(cause)
-		})
-	}
+	intermediateCtx, cancelCauseFunc := context.WithCancelCause(parent)
+	ctx, _ := context.WithTimeout(intermediateCtx, timeout)
+	return ctx, cancelCauseFunc
 }
