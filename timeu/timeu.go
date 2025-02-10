@@ -49,24 +49,19 @@ func MaxTime(v ...time.Time) time.Time {
 }
 
 func IsoWeekStartEnd(year int, week int) (time.Time, time.Time) {
+	// January 4 is always in ISO week 1.
+	jan4 := time.Date(year, time.January, 4, 0, 0, 0, 0, time.UTC)
+	offset := (int(jan4.Weekday()) + 6) % 7
+	startOfWeek1 := jan4.AddDate(0, 0, -offset)
 
-	startDate := time.Date(year, time.January, 1, 0, 0, 0, 0, time.UTC)
-	_, isoWeek := startDate.ISOWeek()
-
-	if isoWeek != 1 {
-		startDate = startDate.AddDate(0, 0, (8-int(startDate.Weekday()))%7) // Move to the next Monday
-		_, isoWeek = startDate.ISOWeek()
-	}
-
-	weekDifference := week - isoWeek
-	weekStart := startDate.AddDate(0, 0, weekDifference*7)
+	weekStart := startOfWeek1.AddDate(0, 0, (week-1)*7)
 
 	calculatedYear, calculatedWeek := weekStart.ISOWeek()
 	if calculatedYear != year || calculatedWeek != week || weekStart.Weekday() != time.Monday {
 		panic("invalid year/week combination")
 	}
 
-	weekEnd := weekStart.AddDate(0, 0, 6).Add(time.Hour * 24)
+	weekEnd := weekStart.AddDate(0, 0, 7)
 	return weekStart, weekEnd
 }
 
