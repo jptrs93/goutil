@@ -38,10 +38,10 @@ func MapValues[K comparable, T any](m map[K]T) []T {
 	return result
 }
 
-func MapMapValues[K comparable, T, U any](m map[K]T, transform func(T) U) []U {
-	result := make([]U, 0, len(m))
-	for _, v := range m {
-		result = append(result, transform(v))
+func MapMapValues[K comparable, T, U any](m map[K]T, transform func(T) U) map[K]U {
+	result := make(map[K]U, len(m))
+	for k, v := range m {
+		result[k] = transform(v)
 	}
 	return result
 }
