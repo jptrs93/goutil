@@ -3,6 +3,7 @@ package logu
 import (
 	"context"
 	"fmt"
+	"github.com/jptrs93/goutil/ptru"
 	"github.com/jptrs93/goutil/timeu"
 	"io"
 	"log/slog"
@@ -11,17 +12,52 @@ import (
 
 const LogContextKey = "_logContext"
 
-func ExtendLogContext(ctx context.Context, key string, value any) context.Context {
-	if existingLogContext, ok := ctx.Value(LogContextKey).(map[string]any); ok {
-		existingLogContext[key] = value
-		return context.WithValue(ctx, LogContextKey, existingLogContext)
+type LogContext struct {
+	Items     []LogContextItem
+	CachedStr string
+}
+
+func (lc *LogContext) UpdateCachedStr() {
+	if len(lc.Items) == 0 {
+		lc.CachedStr = ""
+		return
 	}
-	logContext := map[string]any{key: value}
+	vals := make([]string, 0, len(lc.Items))
+	for _, i := range lc.Items {
+		if i.Value != nil {
+			vals = append(vals, fmt.Sprintf("%v=%v", i.Name, i.Value))
+		} else {
+			vals = append(vals, i.Name)
+		}
+	}
+	lc.CachedStr = " [" + strings.Join(vals, ", ") + "]"
+}
+
+type LogContextItem struct {
+	Name  string
+	Value *string
+}
+
+func ExtendLogContext(ctx context.Context, name string, value any) context.Context {
+	item := LogContextItem{
+		Name: name,
+	}
+	if value != nil {
+		item.Value = ptru.To(fmt.Sprintf("%v", value))
+	}
+	logContext, ok := ctx.Value(LogContextKey).(*LogContext)
+	if !ok {
+		logContext = &LogContext{
+			Items:     []LogContextItem{},
+			CachedStr: "",
+		}
+	}
+	logContext.Items = append(logContext.Items, item)
 	return context.WithValue(ctx, LogContextKey, logContext)
 }
 
-func GetLogContext(ctx context.Context) map[string]any {
-	if m, ok := ctx.Value(LogContextKey).(map[string]any); ok {
+func GetLogContext(ctx context.Context) *LogContext {
+	if m, ok := ctx.Value(LogContextKey).(*LogContext); ok {
 		return m
 	}
 	return nil
@@ -32,12 +68,11 @@ type PlainLogHandler struct {
 	Level  slog.Level
 }
 
-func (h *PlainLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	return level >= h.Level
-}
-
 func (h *PlainLogHandler) Handle(ctx context.Context, r slog.Record) error {
-	logContext := buildStrContext(GetLogContext(ctx))
+	var logContext string
+	if lc := GetLogContext(ctx); lc != nil {
+		logContext = lc.CachedStr
+	}
 
 	// make the level strings all the same length
 	var levelStr string
@@ -77,15 +112,4 @@ func (h *PlainLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 func (h *PlainLogHandler) WithGroup(name string) slog.Handler {
 	return h
-}
-
-func buildStrContext(logCtx map[string]any) string {
-	if len(logCtx) == 0 {
-		return ""
-	}
-	vals := make([]string, 0, len(logCtx))
-	for k, v := range logCtx {
-		vals = append(vals, fmt.Sprintf("%v=%v", k, v))
-	}
-	return " [" + strings.Join(vals, ", ") + "]"
 }
