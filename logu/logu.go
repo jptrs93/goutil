@@ -12,7 +12,11 @@ const LogContextKey = "_logContext"
 
 func ExtendLogContext(ctx context.Context, additionalContext string) context.Context {
 	if existingLogContext, ok := ctx.Value(LogContextKey).(string); ok {
-		return context.WithValue(ctx, LogContextKey, existingLogContext+additionalContext)
+		if len(existingLogContext) > 0 {
+			return context.WithValue(ctx, LogContextKey, existingLogContext+" "+additionalContext)
+		} else {
+			return context.WithValue(ctx, LogContextKey, additionalContext)
+		}
 	}
 	return context.WithValue(ctx, LogContextKey, additionalContext)
 }
@@ -46,13 +50,14 @@ func (h *PlainLogHandler) Handle(ctx context.Context, r slog.Record) error {
 	case slog.LevelDebug:
 		levelStr = "DEBUG"
 	case slog.LevelInfo:
-		levelStr = "INFO "
+		levelStr = "INFO"
 	case slog.LevelWarn:
-		levelStr = "WARN "
+		levelStr = "WARN"
 	case slog.LevelError:
 		levelStr = "ERROR"
 	}
-	msg := fmt.Sprintf("%s %s%s %s\n", r.Time.UTC().Format(timeu.RFC3339Milli), levelStr, logContext, r.Message)
+	timestamp := r.Time.UTC().Format(timeu.RFC3339Milli)
+	msg := fmt.Sprintf("%s %s%s %s\n", timestamp, levelStr, logContext, r.Message)
 	_, err := fmt.Fprint(h.Writer, msg)
 	return err
 }

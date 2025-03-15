@@ -2,6 +2,7 @@ package timeu
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 )
 
@@ -69,4 +70,52 @@ func TruncateIsoWeek(t time.Time) time.Time {
 	y, w := t.ISOWeek()
 	s, _ := IsoWeekStartEnd(y, w)
 	return s
+}
+
+type FixedImmediateTimer struct {
+	NextTriggerTime time.Time
+	Interval        time.Duration
+	Offset          time.Duration
+	Iterations      int
+}
+
+func NewTimerWithJitter(interval time.Duration) *FixedImmediateTimer {
+	return NewFixedImmediateTimer(jitter(), interval)
+}
+
+func NewFixedImmediateTimer(offset, interval time.Duration) *FixedImmediateTimer {
+	// the first tick is at epoch 0 + offset then every interval after that
+	tNow := time.Now().UTC()
+	t0 := time.Time{}.UTC().Add(offset)
+	// note we have to use milli's as max duration is 290 years
+	diffMilli := tNow.UnixMilli() - t0.UnixMilli()
+	n := diffMilli / interval.Milliseconds()
+	nextTriggerMilli := t0.UnixMilli() + (n+1)*interval.Milliseconds()
+	nextTriggerTime := time.Unix(nextTriggerMilli/1000, (nextTriggerMilli%1000)*int64(time.Millisecond)).UTC()
+	return &FixedImmediateTimer{
+		NextTriggerTime: nextTriggerTime,
+		Interval:        interval,
+		Offset:          offset,
+	}
+}
+
+func (t *FixedImmediateTimer) Wait() {
+	t.Iterations += 1
+	pauseDuration := t.NextTriggerTime.Sub(time.Now().UTC())
+	// we want the timer to trigger immediately upon starting
+	// so if the first pause is > 10s then just wait a random [0,5]s and return
+	if t.Iterations == 1 && pauseDuration > time.Second*10 {
+		time.Sleep(time.Duration(rand.Intn(5000)) * time.Millisecond)
+		return
+	}
+	if pauseDuration > 0 {
+		time.Sleep(pauseDuration)
+	}
+	t.NextTriggerTime = time.Now().Add(t.Interval)
+}
+
+func jitter() time.Duration {
+	maxDuration := time.Hour
+	randomDuration := time.Duration(rand.Int63n(int64(maxDuration)))
+	return randomDuration
 }

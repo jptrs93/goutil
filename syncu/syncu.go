@@ -1,47 +1,10 @@
 package syncu
 
 import (
-	"hash"
-	"hash/fnv"
+	"iter"
 	"reflect"
 	"sync"
-	"unsafe"
 )
-
-type StripedStringIDLocks[T comparable] struct {
-	mutexes []sync.Mutex
-	count   int
-	pool    sync.Pool
-}
-
-func NewStripedIDLocks[T comparable](count int) *StripedStringIDLocks[T] {
-	return &StripedStringIDLocks[T]{
-		mutexes: make([]sync.Mutex, count),
-		count:   count,
-		pool: sync.Pool{
-			New: func() interface{} {
-				return fnv.New32a()
-			},
-		},
-	}
-}
-
-func (s *StripedStringIDLocks[T]) hash(id T) int {
-	hasher := s.pool.Get().(hash.Hash32)
-	defer s.pool.Put(hasher)
-	hasher.Reset()
-	valBytes := unsafe.Slice((*byte)(unsafe.Pointer(&id)), unsafe.Sizeof(id))
-	hasher.Write(valBytes)
-	return int(hasher.Sum32())
-}
-
-func (s *StripedStringIDLocks[T]) Lock(id T) {
-	s.mutexes[s.hash(id)%s.count].Lock()
-}
-
-func (s *StripedStringIDLocks[T]) Unlock(id T) {
-	s.mutexes[s.hash(id)%s.count].Unlock()
-}
 
 type IDLocks[T comparable] struct {
 	m SyncMap[T, *sync.Mutex]
@@ -155,6 +118,14 @@ func (m *SyncMap[K, V]) FindValue(predicate func(V) bool) (V, bool) {
 		return true // Continue the iteration
 	})
 	return foundValue, found
+}
+
+func (m *SyncMap[K, V]) Iter() iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		m.M.Range(func(k, v interface{}) bool {
+			return yield(k.(K), v.(V))
+		})
+	}
 }
 
 func RunAllToCompletion(funcs []func()) {
