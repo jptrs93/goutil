@@ -68,6 +68,10 @@ type PlainLogHandler struct {
 	Level  slog.Level
 }
 
+func (h *PlainLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return level >= h.Level
+}
+
 func (h *PlainLogHandler) Handle(ctx context.Context, r slog.Record) error {
 	var logContext string
 	if lc := GetLogContext(ctx); lc != nil {
