@@ -25,7 +25,7 @@ func (lc *LogContext) UpdateCachedStr() {
 	vals := make([]string, 0, len(lc.Items))
 	for _, i := range lc.Items {
 		if i.Value != nil {
-			vals = append(vals, fmt.Sprintf("%v=%v", i.Name, i.Value))
+			vals = append(vals, fmt.Sprintf("%v=%v", i.Name, *i.Value))
 		} else {
 			vals = append(vals, i.Name)
 		}
