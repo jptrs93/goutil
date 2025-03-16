@@ -53,6 +53,7 @@ func ExtendLogContext(ctx context.Context, name string, value any) context.Conte
 		}
 	}
 	logContext.Items = append(logContext.Items, item)
+	logContext.UpdateCachedStr()
 	return context.WithValue(ctx, LogContextKey, logContext)
 }
 
