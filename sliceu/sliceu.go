@@ -87,6 +87,9 @@ func CreateBatches[T any](s []T, batchSize int) [][]T {
 }
 
 func Flatten[T any](data [][]T) []T {
+	if len(data) == 0 {
+		return []T{}
+	}
 	buffer := make([]T, 0, len(data)*len(data[0]))
 	for _, b := range data {
 		buffer = append(buffer, b...)
