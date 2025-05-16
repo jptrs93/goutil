@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jptrs93/goutil/ptru"
+	"github.com/jptrs93/goutil/sliceu"
 	"github.com/jptrs93/goutil/timeu"
 	"io"
 	"log/slog"
@@ -45,15 +46,19 @@ func ExtendLogContext(ctx context.Context, name string, value any) context.Conte
 	if value != nil {
 		item.Value = ptru.To(fmt.Sprintf("%v", value))
 	}
-	logContext, ok := ctx.Value(LogContextKey).(*LogContext)
+	var logContext *LogContext
+	existing, ok := ctx.Value(LogContextKey).(*LogContext)
 	if !ok {
 		logContext = &LogContext{
-			Items:     []LogContextItem{},
-			CachedStr: "",
+			Items: []LogContextItem{},
 		}
+	} else {
+		// ensure we put back a copy so that it does modify the parent ctx LogContext
+		logContext = &LogContext{
+			Items: append(sliceu.Copy(existing.Items), item),
+		}
+		logContext.UpdateCachedStr()
 	}
-	logContext.Items = append(logContext.Items, item)
-	logContext.UpdateCachedStr()
 	return context.WithValue(ctx, LogContextKey, logContext)
 }
 
