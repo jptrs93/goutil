@@ -50,8 +50,9 @@ func ExtendLogContext(ctx context.Context, name string, value any) context.Conte
 	existing, ok := ctx.Value(LogContextKey).(*LogContext)
 	if !ok {
 		logContext = &LogContext{
-			Items: []LogContextItem{},
+			Items: []LogContextItem{item},
 		}
+		logContext.UpdateCachedStr()
 	} else {
 		// ensure we put back a copy so that it does modify the parent ctx LogContext
 		logContext = &LogContext{
