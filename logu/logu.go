@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/jptrs93/goutil/ptru"
-	"github.com/jptrs93/goutil/sliceu"
 	"github.com/jptrs93/goutil/timeu"
 	"io"
 	"log/slog"
@@ -54,9 +53,10 @@ func ExtendLogContext(ctx context.Context, name string, value any) context.Conte
 		}
 		logContext.UpdateCachedStr()
 	} else {
-		// ensure we put back a copy so that it does modify the parent ctx LogContext
+		n := len(existing.Items)
 		logContext = &LogContext{
-			Items: append(sliceu.Copy(existing.Items), item),
+			// ensure capacity=n to force an allocation of new underlying array
+			Items: append(existing.Items[:n:n], item),
 		}
 		logContext.UpdateCachedStr()
 	}
