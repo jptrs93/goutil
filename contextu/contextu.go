@@ -54,3 +54,7 @@ func WithTimeoutCancelCause(parent context.Context, timeout time.Duration) (cont
 	ctx, _ := context.WithTimeout(intermediateCtx, timeout)
 	return ctx, cancelCauseFunc
 }
+
+func Value[T any](ctx context.Context, key string) T {
+	return ctx.Value(key).(T)
+}
