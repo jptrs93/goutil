@@ -36,14 +36,22 @@ func MustGet[T any](key string) T {
 	if !exists {
 		panic(fmt.Sprintf("%v must be set", key))
 	}
+	res, err := Decode[T](value)
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+
+func Decode[T any](value string) (T, error) {
 	var res T
 	valueBytes := []byte(value)
 
 	switch any(res).(type) {
 	case []byte:
-		return any(valueBytes).(T)
+		return any(valueBytes).(T), nil
 	case string:
-		return any(string(valueBytes)).(T)
+		return any(string(valueBytes)).(T), nil
 	default:
 		// small hack to make more robust for slices
 		if reflect.TypeOf(res).Kind() == reflect.Slice {
@@ -56,9 +64,9 @@ func MustGet[T any](key string) T {
 		}
 		err := json.Unmarshal(valueBytes, &res)
 		if err != nil {
-			panic(fmt.Errorf("envutil.MustGetOrDefault[T]: failed to unmarshal value: %v", err))
+			return res, fmt.Errorf("envutil.MustGetOrDefault[T]: failed to unmarshal value: %v", err)
 		}
-		return res
+		return res, nil
 	}
 }
 
