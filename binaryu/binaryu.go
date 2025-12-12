@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,6 +36,12 @@ func WriteInt32(b *bytes.Buffer, d int32) {
 func WriteInt64(b *bytes.Buffer, d int64) {
 	bs := make([]byte, 8)
 	binary.BigEndian.PutUint64(bs, uint64(d))
+	b.Write(bs)
+}
+
+func WriteFloat64(b *bytes.Buffer, d float64) {
+	bs := make([]byte, 8)
+	binary.BigEndian.PutUint64(bs, math.Float64bits(d))
 	b.Write(bs)
 }
 
@@ -121,6 +128,23 @@ func ReadTimeMs(r io.Reader) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return time.UnixMilli(ms), nil
+}
+
+func ReadTimeS(r io.Reader) (time.Time, error) {
+	s, err := ReadInt64(r)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Unix(s, 0), nil
+}
+
+func ReadFloat64(r io.Reader) (float64, error) {
+	bs := make([]byte, 8)
+	_, err := io.ReadFull(r, bs)
+	if err != nil {
+		return 0, err
+	}
+	return math.Float64frombits(binary.BigEndian.Uint64(bs)), nil
 }
 
 func ReadMap[K comparable, V any](r io.Reader, keyReader func(io.Reader) (K, error), valueReader func(io.Reader) (V, error)) (map[K]V, error) {
