@@ -57,6 +57,10 @@ func WriteTimeMs(b *bytes.Buffer, time time.Time) {
 	WriteInt64(b, time.UTC().UnixMilli())
 }
 
+func WriteTimeS(b *bytes.Buffer, time time.Time) {
+	WriteInt64(b, time.UTC().Unix())
+}
+
 func WriteMap[K comparable, V any](b *bytes.Buffer, m map[K]V, keyWriter func(*bytes.Buffer, K), valueWriter func(*bytes.Buffer, V)) {
 	WriteInt32(b, int32(len(m)))
 	for k, v := range m {
