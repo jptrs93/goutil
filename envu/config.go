@@ -1,7 +1,9 @@
 package envu
 
 import (
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"strings"
@@ -15,37 +17,12 @@ func MustLoadConfig[T any](overridePrefix string) T {
 	return c
 }
 
-/*
-Define a config struct like:
-
-type Configuration struct {
-	StripeSecretKey      string `env:"STRIPE_SECRET_KEY"`
-	StripeWebhookSecret  string `env:"STRIPE_WEBHOOK_SECRET"`
-	StripeProductPriceID string `env:"STRIPE_PRODUCT_PRICE_ID"`
-	StripeRedirectDomain string `env:"STRIPE_REDIRECT_DOMAIN"`
-
-	DiscordClientID     string `env:"DISCORD_CLIENT_ID"`
-	DiscordClientSecret string `env:"DISCORD_CLIENT_SECRET"`
-	DiscordAPIEndpoint  string `env:"DISCORD_API_ENDPOINT,https://discord.com/api/v10"`
-
-	PostgresPort       string `env:"POSTGRES_PORT,5432"`
-	PostgresHost       string `env:"POSTGRES_HOST,localhost"`
-	PostgresPassword   string `env:"POSTGRES_PASSWORD"`
-	PostgresSearchPath string `env:"POSTGRES_SEARCH_PATH,public"`
-}
-
-Using tags to define the env var name and potential default value.
-
-Then load it with this function: cfg, err := LoadConfig[Configuration]("")
-
-
-todo: make it work better for values that are slices
-*/
-
 func LoadConfig[T any](overridePrefix string) (T, error) {
 	var config T
 	v := reflect.ValueOf(&config).Elem()
 	t := v.Type()
+
+	slogLevelType := reflect.TypeOf(slog.Level(0))
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
@@ -74,28 +51,35 @@ func LoadConfig[T any](overridePrefix string) (T, error) {
 		}
 
 		// Decode the string value to the appropriate type
-		switch field.Type.Kind() {
-		case reflect.String:
+		switch {
+		case field.Type == slogLevelType:
+			level := decodeLogLevel(value)
+			fieldValue.Set(reflect.ValueOf(level))
+		case field.Type.Kind() == reflect.String:
 			fieldValue.SetString(value)
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		case field.Type.Kind() == reflect.Int, field.Type.Kind() == reflect.Int8,
+			field.Type.Kind() == reflect.Int16, field.Type.Kind() == reflect.Int32,
+			field.Type.Kind() == reflect.Int64:
 			decoded, err := Decode[int64](value)
 			if err != nil {
 				return config, fmt.Errorf("failed to decode %v as int: %v", envVarName, err)
 			}
 			fieldValue.SetInt(decoded)
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		case field.Type.Kind() == reflect.Uint, field.Type.Kind() == reflect.Uint8,
+			field.Type.Kind() == reflect.Uint16, field.Type.Kind() == reflect.Uint32,
+			field.Type.Kind() == reflect.Uint64:
 			decoded, err := Decode[uint64](value)
 			if err != nil {
 				return config, fmt.Errorf("failed to decode %v as uint: %v", envVarName, err)
 			}
 			fieldValue.SetUint(decoded)
-		case reflect.Float32, reflect.Float64:
+		case field.Type.Kind() == reflect.Float32, field.Type.Kind() == reflect.Float64:
 			decoded, err := Decode[float64](value)
 			if err != nil {
 				return config, fmt.Errorf("failed to decode %v as float: %v", envVarName, err)
 			}
 			fieldValue.SetFloat(decoded)
-		case reflect.Bool:
+		case field.Type.Kind() == reflect.Bool:
 			decoded, err := Decode[bool](value)
 			if err != nil {
 				return config, fmt.Errorf("failed to decode %v as bool: %v", envVarName, err)
@@ -103,9 +87,6 @@ func LoadConfig[T any](overridePrefix string) (T, error) {
 			fieldValue.SetBool(decoded)
 		default:
 			// For complex types (slices, structs, etc.), use reflection to decode
-			// Create a new value of the field's type
-
-			// Use Decode with the specific type
 			result := reflect.ValueOf(Decode[any]).Call([]reflect.Value{reflect.ValueOf(value)})
 			if !result[1].IsNil() {
 				return config, fmt.Errorf("failed to decode %v: %v", envVarName, result[1].Interface().(error))
@@ -118,4 +99,14 @@ func LoadConfig[T any](overridePrefix string) (T, error) {
 	}
 
 	return config, nil
+}
+
+func decodeLogLevel(logLevelStr string) slog.Level {
+	var level slog.Level
+	err := json.Unmarshal([]byte(fmt.Sprintf("\"%s\"", logLevelStr)), &level)
+	if err == nil {
+		return level
+	}
+	slog.Warn(fmt.Sprintf("failed decoding log level str '%v' (defaulting to INFO): %v", logLevelStr, err))
+	return slog.LevelInfo
 }
