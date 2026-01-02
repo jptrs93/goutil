@@ -103,7 +103,7 @@ func LoadConfig[T any](overridePrefix string) (T, error) {
 
 func decodeLogLevel(logLevelStr string) slog.Level {
 	var level slog.Level
-	err := json.Unmarshal([]byte(fmt.Sprintf("\"%s\"", logLevelStr)), &level)
+	err := json.Unmarshal([]byte(fmt.Sprintf("\"%s\"", strings.ToUpper(logLevelStr))), &level)
 	if err == nil {
 		return level
 	}
