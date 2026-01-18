@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/jptrs93/secreta/sdk/go/secreta"
 )
 
 func IsTestBasedOnArgs() bool {
@@ -82,38 +84,20 @@ var loadDotEnvOnce = sync.Once{}
 
 func LoadDotEnv(missingOk bool) {
 	loadDotEnvOnce.Do(func() {
-		f, ok := os.LookupEnv("DOT_ENV_FILE")
-		// If DOT_ENV_FILE is not set, search for .env file backwards from current dir
-		if !ok || f == "" {
-			cwd, err := os.Getwd()
-			if err != nil {
-				panic(fmt.Sprintf("failed to get current directory: %v", err))
-			}
-			dir := cwd
-			for {
-				envPath := filepath.Join(dir, ".env")
-				if _, err := os.Stat(envPath); err == nil {
-					f = envPath
-					break
-				}
-				parent := filepath.Dir(dir)
-				if parent == dir {
-					if missingOk {
-						log.Println("No .env file found")
-						return
-					}
-					panic("no .env file found in current directory or any parent directory")
-				}
-				dir = parent
-			}
-		}
-		data, err := os.ReadFile(f)
+		path, err := resolveDotEnvFile(missingOk)
 		if err != nil {
-			panic(fmt.Sprintf("failed to read .env file %s: %v", f, err))
+			panic(err)
+		}
+		if path == "" {
+			return
+		}
+		data, err := readDotEnvFile(path)
+		if err != nil {
+			panic(fmt.Sprintf("failed to read env file %s: %v", path, err))
 		}
 		env := make(map[string]string)
 		if err := parseDotEnvBytes(data, env); err != nil {
-			panic(fmt.Sprintf("failed to parse .env file %s: %v", f, err))
+			panic(fmt.Sprintf("failed to parse env file %s: %v", path, err))
 		}
 		for key, value := range env {
 			// don't overload existing variables
@@ -124,6 +108,48 @@ func LoadDotEnv(missingOk bool) {
 			}
 		}
 	})
+}
+
+func resolveDotEnvFile(missingOk bool) (string, error) {
+	f, ok := os.LookupEnv("DOT_ENV_FILE")
+	if ok && f != "" {
+		return f, nil
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %v", err)
+	}
+	searchNames := []string{".env.secret", ".env"}
+	dir := cwd
+	for {
+		for _, name := range searchNames {
+			envPath := filepath.Join(dir, name)
+			if _, err := os.Stat(envPath); err == nil {
+				return envPath, nil
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			if missingOk {
+				log.Println("No .env or .env.secret file found")
+				return "", nil
+			}
+			return "", fmt.Errorf("no .env or .env.secret file found in current directory or any parent directory")
+		}
+		dir = parent
+	}
+}
+
+func readDotEnvFile(path string) ([]byte, error) {
+	if filepath.Base(path) == ".env.secret" {
+		response, err := secreta.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(response.Plaintext), nil
+	}
+	return os.ReadFile(path)
 }
 
 func xorC(text string, seed int64) string {
