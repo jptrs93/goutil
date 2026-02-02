@@ -58,3 +58,15 @@ func WithTimeoutCancelCause(parent context.Context, timeout time.Duration) (cont
 func Value[T any](ctx context.Context, key string) T {
 	return ctx.Value(key).(T)
 }
+
+func Sleep(ctx context.Context, d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	select {
+	case <-time.After(d):
+		return
+	case <-ctx.Done():
+		return
+	}
+}

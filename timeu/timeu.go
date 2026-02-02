@@ -1,9 +1,12 @@
 package timeu
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/jptrs93/goutil/contextu"
 )
 
 const (
@@ -118,4 +121,42 @@ func jitter() time.Duration {
 	maxDuration := time.Hour
 	randomDuration := time.Duration(rand.Int63n(int64(maxDuration)))
 	return randomDuration
+}
+
+type Backoff struct {
+	CurrentDuration time.Duration
+	MaxDuration     time.Duration
+	F               func(time.Duration) time.Duration
+}
+
+func (b *Backoff) Wait(ctx context.Context) {
+	b.CurrentDuration = b.F(b.CurrentDuration)
+	if b.MaxDuration > 0 && b.CurrentDuration > b.MaxDuration {
+		b.CurrentDuration = b.MaxDuration
+	}
+	contextu.Sleep(ctx, b.CurrentDuration)
+}
+
+func (b *Backoff) Reset() {
+	b.CurrentDuration = 0
+}
+
+func NewExpBackoff(maxDuration time.Duration) *Backoff {
+	return &Backoff{
+		CurrentDuration: 0,
+		MaxDuration:     maxDuration,
+		F: func(i time.Duration) time.Duration {
+			return max(i, time.Second) * 2
+		},
+	}
+}
+
+func NewLinearBackoff(increment, maxDuration time.Duration) *Backoff {
+	return &Backoff{
+		CurrentDuration: 0,
+		MaxDuration:     maxDuration,
+		F: func(i time.Duration) time.Duration {
+			return i + increment
+		},
+	}
 }
