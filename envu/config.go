@@ -85,6 +85,16 @@ func LoadConfig[T any](overridePrefix string) (T, error) {
 				return config, fmt.Errorf("failed to decode %v as bool: %v", envVarName, err)
 			}
 			fieldValue.SetBool(decoded)
+		case field.Type.Kind() == reflect.Slice && field.Type.Elem().Kind() == reflect.String:
+			parts := strings.Split(value, ",")
+			trimmed := make([]string, 0, len(parts))
+			for _, part := range parts {
+				item := strings.TrimSpace(part)
+				if item != "" {
+					trimmed = append(trimmed, item)
+				}
+			}
+			fieldValue.Set(reflect.ValueOf(trimmed))
 		default:
 			// For complex types (slices, structs, etc.), use reflection to decode
 			result := reflect.ValueOf(Decode[any]).Call([]reflect.Value{reflect.ValueOf(value)})
