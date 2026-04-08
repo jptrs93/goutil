@@ -2,6 +2,7 @@ package authu
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -261,4 +262,15 @@ func httpRequestWithBody(body []byte) *http.Request {
 	req, _ := http.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	return req
+}
+
+func GenerateWebAuthnID(n int) ([]byte, error) {
+	if n <= 0 {
+		return nil, fmt.Errorf("webauthn id length must be positive")
+	}
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return nil, fmt.Errorf("generate webauthn id: %w", err)
+	}
+	return b, nil
 }
