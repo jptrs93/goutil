@@ -19,7 +19,7 @@ var ErrSessionInvalid = errors.New("passkey session invalid")
 var ErrCredentialUnavailable = errors.New("passkey credential unavailable")
 var ErrUserMismatch = errors.New("passkey user mismatch")
 
-// WebAuthnID Users must have an opaque associated []byte ID
+// WebAuthnID users and credentials must be identified by opaque []byte ID's
 type WebAuthnID = []byte
 
 type PasskeyService[U gowebauthn.User] struct {
