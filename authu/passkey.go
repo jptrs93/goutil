@@ -18,33 +18,23 @@ var ErrSessionInvalid = errors.New("passkey session invalid")
 var ErrCredentialUnavailable = errors.New("passkey credential unavailable")
 var ErrUserMismatch = errors.New("passkey user mismatch")
 
-type User interface {
-	gowebauthn.User
-	ID() string
-}
+// WebAuthnID Users must have an opaque associated []byte ID
+type WebAuthnID = []byte
 
-type UserResolver interface {
-	LoadByID(id string) (User, error)
-}
-
-type CredentialStore interface {
-	Save(userID string, credential *gowebauthn.Credential) error
-	Fetch(credentialID []byte) (userID string, credential *gowebauthn.Credential, err error)
-	ListByUserID(userID string) ([]gowebauthn.Credential, error)
-}
-
-type PasskeyService struct {
+type PasskeyService[U gowebauthn.User] struct {
 	inner                *gowebauthn.WebAuthn
 	registrationSessions inMemorySessions
 	loginSessions        inMemorySessions
-	credentials          CredentialStore
-	users                UserResolver
+	SaveCredential       func(userID WebAuthnID, credential *gowebauthn.Credential) error
+	LoadUser             func(userID WebAuthnID) (U, error)
+	LoadCredentialOwner  func(credentialID WebAuthnID) (user U, err error)
 	SessionTTL           time.Duration
 }
 
 type passkeySession struct {
 	SessionID string
-	UserID    string
+	UserID    []byte
+	HasUserID bool
 	ExpiresAt time.Time
 	Payload   []byte
 }
@@ -54,29 +44,30 @@ type inMemorySessions struct {
 	records map[string]passkeySession
 }
 
-func NewPasskeyService(config *gowebauthn.Config, credentials CredentialStore, users UserResolver) (*PasskeyService, error) {
+func NewPasskeyService[U gowebauthn.User](config *gowebauthn.Config, saveCredential func(userID []byte, credential *gowebauthn.Credential) error, loadUser func(userID []byte) (U, error), loadCredentialOwner func(credentialID []byte) (user U, err error)) (*PasskeyService[U], error) {
 	if config == nil {
 		return nil, fmt.Errorf("missing webauthn config")
 	}
-	if credentials == nil || users == nil {
+	if saveCredential == nil || loadUser == nil || loadCredentialOwner == nil {
 		return nil, fmt.Errorf("missing passkey dependencies")
 	}
 	inner, err := gowebauthn.New(config)
 	if err != nil {
 		return nil, fmt.Errorf("creating webauthn config: %w", err)
 	}
-	return &PasskeyService{
+	return &PasskeyService[U]{
 		inner:                inner,
 		registrationSessions: inMemorySessions{records: map[string]passkeySession{}},
 		loginSessions:        inMemorySessions{records: map[string]passkeySession{}},
-		credentials:          credentials,
-		users:                users,
+		SaveCredential:       saveCredential,
+		LoadUser:             loadUser,
+		LoadCredentialOwner:  loadCredentialOwner,
 		SessionTTL:           5 * time.Minute,
 	}, nil
 }
 
-func (s *PasskeyService) BeginRegistration(userID string) (string, []byte, error) {
-	user, err := s.users.LoadByID(userID)
+func (s *PasskeyService[U]) BeginRegistration(userID []byte) (string, []byte, error) {
+	user, err := s.LoadUser(userID)
 	if err != nil {
 		return "", nil, err
 	}
@@ -93,7 +84,7 @@ func (s *PasskeyService) BeginRegistration(userID string) (string, []byte, error
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal registration options: %w", err)
 	}
-	record, err := s.newSession(userID, session)
+	record, err := s.newSession(userID, true, session)
 	if err != nil {
 		return "", nil, err
 	}
@@ -101,15 +92,15 @@ func (s *PasskeyService) BeginRegistration(userID string) (string, []byte, error
 	return record.SessionID, optionsJSON, nil
 }
 
-func (s *PasskeyService) FinishRegistration(userID string, sessionID string, credentialJSON []byte) ([]byte, error) {
+func (s *PasskeyService[U]) FinishRegistration(userID []byte, sessionID string, credentialJSON []byte) ([]byte, error) {
 	record, err := s.consumeSession(&s.registrationSessions, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	if record.UserID != userID {
+	if !record.HasUserID || !bytes.Equal(record.UserID, userID) {
 		return nil, ErrUserMismatch
 	}
-	user, err := s.users.LoadByID(userID)
+	user, err := s.LoadUser(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +118,7 @@ func (s *PasskeyService) FinishRegistration(userID string, sessionID string, cre
 	return credential.ID, nil
 }
 
-func (s *PasskeyService) BeginLogin() (string, []byte, error) {
+func (s *PasskeyService[U]) BeginLogin() (string, []byte, error) {
 	assertion, session, err := s.inner.BeginDiscoverableLogin(gowebauthn.WithUserVerification(protocol.VerificationPreferred))
 	if err != nil {
 		return "", nil, err
@@ -136,7 +127,7 @@ func (s *PasskeyService) BeginLogin() (string, []byte, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal login options: %w", err)
 	}
-	record, err := s.newSession("", session)
+	record, err := s.newSession(nil, false, session)
 	if err != nil {
 		return "", nil, err
 	}
@@ -144,45 +135,42 @@ func (s *PasskeyService) BeginLogin() (string, []byte, error) {
 	return record.SessionID, optionsJSON, nil
 }
 
-func (s *PasskeyService) FinishLogin(sessionID string, credentialJSON []byte) (User, error) {
+func (s *PasskeyService[U]) FinishLogin(sessionID string, credentialJSON []byte) (U, error) {
+	var zero U
 	record, err := s.consumeSession(&s.loginSessions, sessionID)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	session, err := decodeSession(record.Payload)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
-	validatedUser, credential, err := s.inner.FinishPasskeyLogin(s.loadLoginUser, *session, httpRequestWithBody(credentialJSON))
+	var resolvedUserID []byte
+	validatedUser, credential, err := s.inner.FinishPasskeyLogin(func(rawID []byte, userHandle []byte) (gowebauthn.User, error) {
+		user, err := s.LoadCredentialOwner(rawID)
+		if err != nil {
+			return nil, err
+		}
+		if !bytes.Equal(userHandle, user.WebAuthnID()) {
+			return nil, ErrCredentialUnavailable
+		}
+		resolvedUserID = bytes.Clone(user.WebAuthnID())
+		return user, nil
+	}, *session, httpRequestWithBody(credentialJSON))
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
-	user, ok := validatedUser.(User)
+	user, ok := validatedUser.(U)
 	if !ok {
-		return nil, fmt.Errorf("unexpected passkey user type %T", validatedUser)
+		return zero, fmt.Errorf("unexpected passkey user type %T", validatedUser)
 	}
-	if err := s.saveCredential(user.ID(), credential); err != nil {
-		return nil, err
+	if err := s.saveCredential(resolvedUserID, credential); err != nil {
+		return zero, err
 	}
 	return user, nil
 }
 
-func EncodeCredential(credential *gowebauthn.Credential) ([]byte, error) {
-	if credential == nil {
-		return nil, fmt.Errorf("nil passkey credential")
-	}
-	return json.Marshal(credential)
-}
-
-func DecodeCredential(b []byte) (*gowebauthn.Credential, error) {
-	var credential gowebauthn.Credential
-	if err := json.Unmarshal(b, &credential); err != nil {
-		return nil, fmt.Errorf("decode passkey credential: %w", err)
-	}
-	return &credential, nil
-}
-
-func (s *PasskeyService) newSession(userID string, session *gowebauthn.SessionData) (passkeySession, error) {
+func (s *PasskeyService[U]) newSession(userID []byte, hasUserID bool, session *gowebauthn.SessionData) (passkeySession, error) {
 	sessionID, err := GenerateRandomToken(24)
 	if err != nil {
 		return passkeySession{}, fmt.Errorf("generate passkey session id: %w", err)
@@ -197,13 +185,14 @@ func (s *PasskeyService) newSession(userID string, session *gowebauthn.SessionDa
 	}
 	return passkeySession{
 		SessionID: sessionID,
-		UserID:    userID,
+		UserID:    bytes.Clone(userID),
+		HasUserID: hasUserID,
 		ExpiresAt: expiresAt,
 		Payload:   payload,
 	}, nil
 }
 
-func (s *PasskeyService) consumeSession(store *inMemorySessions, sessionID string) (*passkeySession, error) {
+func (s *PasskeyService[U]) consumeSession(store *inMemorySessions, sessionID string) (*passkeySession, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil, ErrSessionInvalid
@@ -211,26 +200,11 @@ func (s *PasskeyService) consumeSession(store *inMemorySessions, sessionID strin
 	return store.consume(sessionID)
 }
 
-func (s *PasskeyService) loadLoginUser(rawID []byte, userHandle []byte) (gowebauthn.User, error) {
-	userID, _, err := s.credentials.Fetch(rawID)
-	if err != nil {
-		return nil, err
-	}
-	user, err := s.users.LoadByID(userID)
-	if err != nil {
-		return nil, err
-	}
-	if !bytes.Equal(userHandle, user.WebAuthnID()) {
-		return nil, ErrCredentialUnavailable
-	}
-	return user, nil
+func (s *PasskeyService[U]) saveCredential(userID []byte, credential *gowebauthn.Credential) error {
+	return s.SaveCredential(userID, credential)
 }
 
-func (s *PasskeyService) saveCredential(userID string, credential *gowebauthn.Credential) error {
-	return s.credentials.Save(userID, credential)
-}
-
-func (s *PasskeyService) sessionTTL() time.Duration {
+func (s *PasskeyService[U]) sessionTTL() time.Duration {
 	if s.SessionTTL <= 0 {
 		return 5 * time.Minute
 	}

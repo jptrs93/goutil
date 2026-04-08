@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 
 	"strings"
@@ -27,7 +28,7 @@ type activeKey struct {
 	PublicKey  *rsa.PublicKey
 }
 
-type JWTAuth[T any] struct {
+type JWTAuth[T any, K any] struct {
 	AutoRotateDuration time.Duration
 	SigningMethod      jwt.SigningMethod
 	RSAKeySize         int
@@ -36,14 +37,14 @@ type JWTAuth[T any] struct {
 
 	PublicKeyStorer func(kid string, key []byte) error
 	PublicKeyLoader func(kid string) ([]byte, error)
-	UserLoader      func(sub string) (T, error)
+	UserLoader      func(sub K) (T, error)
 	mu              sync.Mutex
 
 	CachedPublicKeys sync.Map
 }
 
-func NewJWTAuth[T any](storer func(string, []byte) error, loader func(string) ([]byte, error), userLoader func(string) (T, error)) *JWTAuth[T] {
-	return &JWTAuth[T]{
+func NewJWTAuth[T any, K any](storer func(string, []byte) error, loader func(string) ([]byte, error), userLoader func(K) (T, error)) *JWTAuth[T, K] {
+	return &JWTAuth[T, K]{
 		AutoRotateDuration: time.Hour * 24 * 90,
 		RSAKeySize:         2048,
 		SigningMethod:      jwt.SigningMethodRS256,
@@ -54,9 +55,35 @@ func NewJWTAuth[T any](storer func(string, []byte) error, loader func(string) ([
 	}
 }
 
-func (a *JWTAuth[T]) GenerateTokenWith(sub string, scopes []string, ttl time.Duration) (string, error) {
+func encodeJWTSubject[K any](sub K) (string, error) {
+	if s, ok := any(sub).(string); ok {
+		return s, nil
+	}
+	b, err := json.Marshal(sub)
+	if err != nil {
+		return "", fmt.Errorf("encoding sub claim: %w", err)
+	}
+	return string(b), nil
+}
+
+func decodeJWTSubject[K any](raw string) (K, error) {
+	if _, ok := any(*new(K)).(string); ok {
+		return any(raw).(K), nil
+	}
+	var sub K
+	if err := json.Unmarshal([]byte(raw), &sub); err != nil {
+		return sub, fmt.Errorf("decoding sub claim: %w", err)
+	}
+	return sub, nil
+}
+
+func (a *JWTAuth[T, K]) GenerateTokenWith(sub K, scopes []string, ttl time.Duration) (string, error) {
+	encodedSub, err := encodeJWTSubject(sub)
+	if err != nil {
+		return "", err
+	}
 	claims := jwt.MapClaims{
-		"sub":    sub,
+		"sub":    encodedSub,
 		"scopes": scopes,
 		"exp":    time.Now().Add(ttl).Unix(),
 		"iat":    time.Now().Unix(),
@@ -64,7 +91,7 @@ func (a *JWTAuth[T]) GenerateTokenWith(sub string, scopes []string, ttl time.Dur
 	return a.Sign(claims)
 }
 
-func (a *JWTAuth[T]) Sign(claims jwt.MapClaims) (string, error) {
+func (a *JWTAuth[T, K]) Sign(claims jwt.MapClaims) (string, error) {
 	ak, err := a.ensureActiveKey()
 	if err != nil {
 		return "", err
@@ -74,7 +101,7 @@ func (a *JWTAuth[T]) Sign(claims jwt.MapClaims) (string, error) {
 	return token.SignedString(ak.PrivateKey)
 }
 
-func (a *JWTAuth[T]) SignDoubleSubmit(claims jwt.MapClaims) (string, string, error) {
+func (a *JWTAuth[T, K]) SignDoubleSubmit(claims jwt.MapClaims) (string, string, error) {
 	csrfToken, err := GenerateRandomToken(24)
 	if err != nil {
 		return "", "", fmt.Errorf("generating random token: %w", err)
@@ -84,7 +111,7 @@ func (a *JWTAuth[T]) SignDoubleSubmit(claims jwt.MapClaims) (string, string, err
 	return jwtToken, csrfToken, err
 }
 
-func (a *JWTAuth[T]) Verify(jwtToken string) (jwt.MapClaims, error) {
+func (a *JWTAuth[T, K]) Verify(jwtToken string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(jwtToken, a.loadKey)
 	if err != nil {
 		return nil, err
@@ -96,16 +123,21 @@ func (a *JWTAuth[T]) Verify(jwtToken string) (jwt.MapClaims, error) {
 	return claims, nil
 }
 
-func (a *JWTAuth[T]) VerifyAndResolveUser(jwtToken string) (jwt.MapClaims, T, error) {
+func (a *JWTAuth[T, K]) VerifyAndResolveUser(jwtToken string) (jwt.MapClaims, T, error) {
 	claims, err := a.Verify(jwtToken)
 	if err != nil {
 		var zero T
 		return nil, zero, err
 	}
-	sub, _ := claims["sub"].(string)
-	if sub == "" {
+	rawSub, ok := claims["sub"].(string)
+	if !ok {
 		var zero T
 		return nil, zero, fmt.Errorf("missing sub claim")
+	}
+	sub, err := decodeJWTSubject[K](rawSub)
+	if err != nil {
+		var zero T
+		return nil, zero, err
 	}
 	user, err := a.UserLoader(sub)
 	if err != nil {
@@ -115,7 +147,7 @@ func (a *JWTAuth[T]) VerifyAndResolveUser(jwtToken string) (jwt.MapClaims, T, er
 	return claims, user, nil
 }
 
-func (a *JWTAuth[T]) VerifyDoubleSubmit(jwtToken string, headerCsrf string) (jwt.MapClaims, error) {
+func (a *JWTAuth[T, K]) VerifyDoubleSubmit(jwtToken string, headerCsrf string) (jwt.MapClaims, error) {
 	claims, err := a.Verify(jwtToken)
 	if err != nil {
 		return nil, err
@@ -127,16 +159,21 @@ func (a *JWTAuth[T]) VerifyDoubleSubmit(jwtToken string, headerCsrf string) (jwt
 	return claims, nil
 }
 
-func (a *JWTAuth[T]) VerifyDoubleSubmitAndResolveUser(jwtToken string, headerCsrf string) (jwt.MapClaims, T, error) {
+func (a *JWTAuth[T, K]) VerifyDoubleSubmitAndResolveUser(jwtToken string, headerCsrf string) (jwt.MapClaims, T, error) {
 	claims, err := a.VerifyDoubleSubmit(jwtToken, headerCsrf)
 	if err != nil {
 		var zero T
 		return nil, zero, err
 	}
-	sub, _ := claims["sub"].(string)
-	if sub == "" {
+	rawSub, ok := claims["sub"].(string)
+	if !ok {
 		var zero T
 		return nil, zero, fmt.Errorf("missing sub claim")
+	}
+	sub, err := decodeJWTSubject[K](rawSub)
+	if err != nil {
+		var zero T
+		return nil, zero, err
 	}
 	user, err := a.UserLoader(sub)
 	if err != nil {
@@ -146,7 +183,7 @@ func (a *JWTAuth[T]) VerifyDoubleSubmitAndResolveUser(jwtToken string, headerCsr
 	return claims, user, nil
 }
 
-func (a *JWTAuth[T]) loadKey(t *jwt.Token) (any, error) {
+func (a *JWTAuth[T, K]) loadKey(t *jwt.Token) (any, error) {
 	kidAny, ok := t.Header[kidKey]
 	if !ok {
 		return nil, fmt.Errorf("missing kid header")
@@ -183,11 +220,11 @@ func (a *JWTAuth[T]) loadKey(t *jwt.Token) (any, error) {
 	return verifyKey, nil
 }
 
-func (a *JWTAuth[T]) isActiveKeyValid(ak *activeKey) bool {
+func (a *JWTAuth[T, K]) isActiveKeyValid(ak *activeKey) bool {
 	return ak != nil && ak.PrivateKey != nil && ak.PublicKey != nil && strings.TrimSpace(ak.Kid) != "" && (a.AutoRotateDuration <= 0 || time.Since(ak.Created) < a.AutoRotateDuration)
 }
 
-func (a *JWTAuth[T]) ensureActiveKey() (*activeKey, error) {
+func (a *JWTAuth[T, K]) ensureActiveKey() (*activeKey, error) {
 	if ak := a.activeKey.Load(); a.isActiveKeyValid(ak) {
 		return ak, nil
 	}
