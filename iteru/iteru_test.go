@@ -18,7 +18,7 @@ func TestSeqToIOReader(t *testing.T) {
 	}{
 		{
 			name:    "Test case 1",
-			in:      LineSeq(bytes.NewReader([]byte("apples\noranges\ntomatoes"))),
+			in:      LineSeq(bytes.NewReader([]byte("apples\noranges\ntomatoes")), true),
 			want:    []byte("applesorangestomatoes"),
 			wantErr: nil,
 		},
@@ -169,7 +169,7 @@ func TestLineIter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			i := 0
-			for line, err := range LineSeq(tt.in) {
+			for line, err := range LineSeq(tt.in, true) {
 				if !bytes.Equal(line, []byte(tt.expectedLines[i])) {
 					t.Errorf("%v item line '%s' != expected '%s'", i+1, line, tt.expectedLines[i])
 				}
