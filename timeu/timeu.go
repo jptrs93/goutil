@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/jptrs93/goutil/contextu"
@@ -121,6 +122,64 @@ func jitter() time.Duration {
 	maxDuration := time.Hour
 	randomDuration := time.Duration(rand.Int63n(int64(maxDuration)))
 	return randomDuration
+}
+
+type OffsetTicker struct {
+	C    <-chan time.Time
+	stop chan struct{}
+	once sync.Once
+}
+
+func NewOffsetTicker(period time.Duration, around time.Time, jitterStd time.Duration) *OffsetTicker {
+	if period <= 0 {
+		panic("non-positive period for NewOffsetTicker")
+	}
+
+	jitter := time.Duration(0)
+	if jitterStd > 0 {
+		jitter = time.Duration(rand.NormFloat64() * float64(jitterStd))
+	}
+
+	c := make(chan time.Time, 1)
+	t := &OffsetTicker{
+		C:    c,
+		stop: make(chan struct{}),
+	}
+	go t.run(c, period, nextOffsetTickerTick(time.Now(), period, around.Add(jitter)))
+	return t
+}
+
+func (t *OffsetTicker) Stop() {
+	t.once.Do(func() {
+		close(t.stop)
+	})
+}
+
+func (t *OffsetTicker) run(c chan<- time.Time, period time.Duration, next time.Time) {
+	for {
+		if !next.After(time.Now()) {
+			next = nextOffsetTickerTick(time.Now(), period, next)
+		}
+
+		timer := time.NewTimer(time.Until(next))
+		select {
+		case <-timer.C:
+			select {
+			case c <- next:
+			default:
+			}
+			next = next.Add(period)
+		case <-t.stop:
+			return
+		}
+	}
+}
+
+func nextOffsetTickerTick(now time.Time, period time.Duration, around time.Time) time.Time {
+	if around.After(now) {
+		return around
+	}
+	return around.Add((now.Sub(around)/period + 1) * period)
 }
 
 type Backoff struct {
