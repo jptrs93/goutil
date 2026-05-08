@@ -130,6 +130,127 @@ type OffsetTicker struct {
 	once sync.Once
 }
 
+type Schedule interface {
+	NextAfter(time.Time) time.Time
+}
+
+type DailySchedule struct {
+	Hour     int
+	Minute   int
+	Second   int
+	Location *time.Location
+}
+
+func (s DailySchedule) NextAfter(now time.Time) time.Time {
+	loc := s.Location
+	if loc == nil {
+		loc = time.UTC
+	}
+
+	now = now.In(loc)
+	next := time.Date(now.Year(), now.Month(), now.Day(), s.Hour, s.Minute, s.Second, 0, loc)
+	if !next.After(now) {
+		next = next.AddDate(0, 0, 1)
+	}
+	return next
+}
+
+type WeeklySchedule struct {
+	Weekday  time.Weekday
+	Hour     int
+	Minute   int
+	Second   int
+	Location *time.Location
+}
+
+func (s WeeklySchedule) NextAfter(now time.Time) time.Time {
+	loc := s.Location
+	if loc == nil {
+		loc = time.UTC
+	}
+
+	now = now.In(loc)
+	daysUntil := (int(s.Weekday) - int(now.Weekday()) + 7) % 7
+	nextDay := now.AddDate(0, 0, daysUntil)
+	next := time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), s.Hour, s.Minute, s.Second, 0, loc)
+	if !next.After(now) {
+		next = next.AddDate(0, 0, 7)
+	}
+	return next
+}
+
+type ScheduleTicker struct {
+	C    <-chan time.Time
+	stop chan struct{}
+	once sync.Once
+}
+
+type ScheduleTickerOption func(*scheduleTickerConfig)
+
+type scheduleTickerConfig struct {
+	randomJitterStd time.Duration
+}
+
+func WithRandomJitterStd(std time.Duration) ScheduleTickerOption {
+	return func(c *scheduleTickerConfig) {
+		c.randomJitterStd = std
+	}
+}
+
+func NewScheduleTicker(schedule Schedule, opts ...ScheduleTickerOption) *ScheduleTicker {
+	if schedule == nil {
+		panic("nil schedule for NewScheduleTicker")
+	}
+
+	config := scheduleTickerConfig{}
+	for _, opt := range opts {
+		opt(&config)
+	}
+
+	jitter := time.Duration(0)
+	if config.randomJitterStd > 0 {
+		jitter = time.Duration(rand.NormFloat64() * float64(config.randomJitterStd))
+	}
+
+	c := make(chan time.Time, 1)
+	t := &ScheduleTicker{
+		C:    c,
+		stop: make(chan struct{}),
+	}
+	go t.run(c, schedule, nextScheduleTickerTick(time.Now(), schedule, jitter), jitter)
+	return t
+}
+
+func (t *ScheduleTicker) Stop() {
+	t.once.Do(func() {
+		close(t.stop)
+	})
+}
+
+func (t *ScheduleTicker) run(c chan<- time.Time, schedule Schedule, next time.Time, jitter time.Duration) {
+	for {
+		if !next.After(time.Now()) {
+			next = nextScheduleTickerTick(time.Now(), schedule, jitter)
+		}
+
+		timer := time.NewTimer(time.Until(next))
+		select {
+		case <-timer.C:
+			select {
+			case c <- next:
+			default:
+			}
+			next = nextScheduleTickerTick(next, schedule, jitter)
+		case <-t.stop:
+			return
+		}
+	}
+}
+
+func nextScheduleTickerTick(now time.Time, schedule Schedule, jitter time.Duration) time.Time {
+	return schedule.NextAfter(now.Add(-jitter)).Add(jitter)
+}
+
 func NewOffsetTicker(period time.Duration, around time.Time, jitterStd time.Duration) *OffsetTicker {
 	if period <= 0 {
 		panic("non-positive period for NewOffsetTicker")
