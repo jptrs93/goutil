@@ -306,35 +306,52 @@ func nextOffsetTickerTick(now time.Time, period time.Duration, around time.Time)
 type Backoff struct {
 	CurrentDuration time.Duration
 	MaxDuration     time.Duration
+	ResetDuration   time.Duration
 	F               func(time.Duration) time.Duration
+	lastWait        time.Time
 }
 
-func (b *Backoff) Wait(ctx context.Context) {
+func (b *Backoff) Wait() {
+	b.WaitWithContext(context.Background())
+}
+
+func (b *Backoff) WaitWithContext(ctx context.Context) {
+	now := time.Now()
+	if b.ResetDuration > 0 && !b.lastWait.IsZero() && now.Sub(b.lastWait) > b.ResetDuration {
+		b.Reset()
+		b.lastWait = now
+		return
+	}
+
 	b.CurrentDuration = b.F(b.CurrentDuration)
 	if b.MaxDuration > 0 && b.CurrentDuration > b.MaxDuration {
 		b.CurrentDuration = b.MaxDuration
 	}
 	contextu.Sleep(ctx, b.CurrentDuration)
+	b.lastWait = time.Now()
 }
 
 func (b *Backoff) Reset() {
 	b.CurrentDuration = 0
+	b.lastWait = time.Time{}
 }
 
-func NewExpBackoff(maxDuration time.Duration) *Backoff {
+func NewExpBackoff(maxDuration, resetDuration time.Duration) *Backoff {
 	return &Backoff{
 		CurrentDuration: 0,
 		MaxDuration:     maxDuration,
+		ResetDuration:   resetDuration,
 		F: func(i time.Duration) time.Duration {
 			return max(i, time.Second) * 2
 		},
 	}
 }
 
-func NewLinearBackoff(increment, maxDuration time.Duration) *Backoff {
+func NewLinearBackoff(increment, maxDuration, resetDuration time.Duration) *Backoff {
 	return &Backoff{
 		CurrentDuration: 0,
 		MaxDuration:     maxDuration,
+		ResetDuration:   resetDuration,
 		F: func(i time.Duration) time.Duration {
 			return i + increment
 		},

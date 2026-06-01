@@ -1,6 +1,7 @@
 package timeu
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -126,5 +127,40 @@ func TestNextScheduleTickerTickAppliesStableJitter(t *testing.T) {
 	want = time.Date(2026, time.May, 8, 4, 17, 0, 0, time.UTC)
 	if !got.Equal(want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestBackoffWaitWithContextResetsAfterResetDuration(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	fCalled := false
+	b := &Backoff{
+		CurrentDuration: 5 * time.Second,
+		ResetDuration:   time.Hour,
+		lastWait:        time.Now().Add(-2 * time.Hour),
+		F: func(i time.Duration) time.Duration {
+			fCalled = true
+			return time.Second
+		},
+	}
+
+	b.WaitWithContext(ctx)
+	if fCalled {
+		t.Fatal("expected reset without backoff function call")
+	}
+	if b.CurrentDuration != 0 {
+		t.Fatalf("current duration = %v, want 0", b.CurrentDuration)
+	}
+	if b.lastWait.IsZero() {
+		t.Fatal("expected reset wait to update last wait time")
+	}
+
+	b.WaitWithContext(ctx)
+	if !fCalled {
+		t.Fatal("expected next wait within reset duration to call backoff function")
+	}
+	if b.CurrentDuration != time.Second {
+		t.Fatalf("current duration = %v, want %v", b.CurrentDuration, time.Second)
 	}
 }
