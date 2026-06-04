@@ -17,7 +17,7 @@ const (
 	exportPrefix = "export"
 )
 
-func parseDotEnvBytes(src []byte, out map[string]string) error {
+func ParseDotEnvBytes(src []byte, out map[string]string) error {
 	src = bytes.Replace(src, []byte("\r\n"), []byte("\n"), -1)
 	cutset := src
 	for {

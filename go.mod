@@ -6,7 +6,6 @@ require (
 	github.com/go-webauthn/webauthn v0.16.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
-	github.com/jptrs93/secreta/sdk/go v0.0.0-20260118042355-54d5c013897f
 	golang.org/x/crypto v0.49.0
 )
 
