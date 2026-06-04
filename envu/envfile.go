@@ -23,8 +23,8 @@ func LoadDotEnv(missingOk bool) {
 		if err != nil {
 			panic(fmt.Sprintf("failed to read env file %s: %v", path, err))
 		}
-		env := make(map[string]string)
-		if err := ParseDotEnvBytes(data, env); err != nil {
+		env, err := ParseDotEnvBytes(data)
+		if err != nil {
 			panic(fmt.Sprintf("failed to parse env file %s: %v", path, err))
 		}
 		for key, value := range env {

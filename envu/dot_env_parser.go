@@ -17,7 +17,8 @@ const (
 	exportPrefix = "export"
 )
 
-func ParseDotEnvBytes(src []byte, out map[string]string) error {
+func ParseDotEnvBytes(src []byte) (map[string]string, error) {
+	env := make(map[string]string)
 	src = bytes.Replace(src, []byte("\r\n"), []byte("\n"), -1)
 	cutset := src
 	for {
@@ -29,19 +30,19 @@ func ParseDotEnvBytes(src []byte, out map[string]string) error {
 
 		key, left, err := locateKeyName(cutset)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		value, left, err := extractVarValue(left, out)
+		value, left, err := extractVarValue(left, env)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		out[key] = value
+		env[key] = value
 		cutset = left
 	}
 
-	return nil
+	return env, nil
 }
 
 // getStatementPosition returns position of statement begin.
