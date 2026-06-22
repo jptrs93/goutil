@@ -17,13 +17,29 @@ func MustParse[T any](loadEnvValueFunc func(k string) (string, bool)) T {
 func Parse[T any](loadEnvValueFunc func(k string) (string, bool)) (T, error) {
 	var config T
 	v := reflect.ValueOf(&config).Elem()
+	if err := parseFields(v, loadEnvValueFunc); err != nil {
+		return config, err
+	}
+	return config, nil
+}
+
+func parseFields(v reflect.Value, loadEnvValueFunc func(k string) (string, bool)) error {
 	t := v.Type()
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		fieldValue := v.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+
 		envTag := field.Tag.Get("env")
 		if envTag == "" {
+			if field.Anonymous && fieldValue.Kind() == reflect.Struct {
+				if err := parseFields(fieldValue, loadEnvValueFunc); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		parts := strings.SplitN(envTag, ",", 2)
@@ -35,14 +51,14 @@ func Parse[T any](loadEnvValueFunc func(k string) (string, bool)) (T, error) {
 			} else if field.Type.Kind() == reflect.Pointer {
 				continue
 			} else {
-				return config, fmt.Errorf("required env var %v missing", envVarName)
+				return fmt.Errorf("required env var %v missing", envVarName)
 			}
 		}
 		if err := setConfigField(fieldValue, value, envVarName); err != nil {
-			return config, err
+			return err
 		}
 	}
-	return config, nil
+	return nil
 }
 
 func setConfigField(fieldValue reflect.Value, value string, envVarName string) error {

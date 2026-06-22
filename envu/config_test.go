@@ -78,6 +78,34 @@ func TestParseUsesEmptyLoadedValue(t *testing.T) {
 	}
 }
 
+func TestParseEmbeddedStruct(t *testing.T) {
+	type BaseConfig struct {
+		AppName string `env:"APP_NAME"`
+		AppEnv  string `env:"APP_ENV,production"`
+	}
+	type config struct {
+		BaseConfig
+		Port int `env:"PORT"`
+	}
+
+	got, err := Parse[config](func(k string) (string, bool) {
+		switch k {
+		case "APP_NAME":
+			return "myapp", true
+		case "PORT":
+			return "8080", true
+		default:
+			return "", false
+		}
+	})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got.AppName != "myapp" || got.AppEnv != "production" || got.Port != 8080 {
+		t.Fatalf("Parse() = %+v", got)
+	}
+}
+
 func TestParsePointerFieldsAreOptional(t *testing.T) {
 	type config struct {
 		OptionalName *string `env:"OPTIONAL_NAME"`
