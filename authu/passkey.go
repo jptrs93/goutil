@@ -120,7 +120,7 @@ func (s *PasskeyService[U]) FinishRegistration(userID []byte, sessionID string, 
 }
 
 func (s *PasskeyService[U]) BeginLogin() (string, []byte, error) {
-	assertion, session, err := s.inner.BeginDiscoverableLogin(gowebauthn.WithUserVerification(protocol.VerificationPreferred))
+	assertion, session, err := s.inner.BeginDiscoverableLogin(gowebauthn.WithUserVerification(s.userVerification()))
 	if err != nil {
 		return "", nil, err
 	}
@@ -210,6 +210,13 @@ func (s *PasskeyService[U]) sessionTTL() time.Duration {
 		return 5 * time.Minute
 	}
 	return s.SessionTTL
+}
+
+func (s *PasskeyService[U]) userVerification() protocol.UserVerificationRequirement {
+	if s.inner.Config.AuthenticatorSelection.UserVerification == "" {
+		return protocol.VerificationPreferred
+	}
+	return s.inner.Config.AuthenticatorSelection.UserVerification
 }
 
 func (s *inMemorySessions) save(record passkeySession) {
