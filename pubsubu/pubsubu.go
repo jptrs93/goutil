@@ -48,6 +48,12 @@ func (s *PubSub[T]) Subscribe(f func(T, T) bool) *Sub[T] {
 	return sub
 }
 
+func (s *PubSub[T]) Value() T {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	return s.LastValue
+}
+
 func (s *PubSub[T]) Notify(value T) {
 	if s == nil {
 		return
