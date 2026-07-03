@@ -6,7 +6,7 @@ import (
 )
 
 type Sub[T any] struct {
-	Filter func(T) bool
+	Filter func(T, T) bool
 	Ch     chan T
 
 	InitialValue      T
@@ -21,7 +21,7 @@ type PubSub[T any] struct {
 	LastValueValid bool
 }
 
-func (s *PubSub[T]) Subscribe(f func(T) bool) *Sub[T] {
+func (s *PubSub[T]) Subscribe(f func(T, T) bool) *Sub[T] {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -56,12 +56,9 @@ func (s *PubSub[T]) Notify(value T) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
-	s.LastValue = value
-	s.LastValueValid = true
-
 	// Send under the lock: UnsubscribeFunc closes Ch under the same lock, and a send on a closed channel panics.
 	for _, sub := range s.Subs {
-		if sub.Filter != nil && !sub.Filter(value) {
+		if sub.Filter != nil && !sub.Filter(s.LastValue, value) {
 			continue
 		}
 		select {
@@ -70,4 +67,6 @@ func (s *PubSub[T]) Notify(value T) {
 			slog.Warn("subscription channel full, dropping notification")
 		}
 	}
+	s.LastValue = value
+	s.LastValueValid = true
 }
