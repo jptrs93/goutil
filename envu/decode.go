@@ -3,6 +3,7 @@ package envu
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"reflect"
 )
 
@@ -13,6 +14,12 @@ func Decode[T any](value string) (T, error) {
 	switch any(res).(type) {
 	case []byte:
 		return any(valueBytes).(T), nil
+	case slog.Level:
+		var level slog.Level
+		if err := level.UnmarshalText(valueBytes); err != nil {
+			return res, fmt.Errorf("envutil.MustGetOrDefault[T]: failed to unmarshal slog.Level: %v", err)
+		}
+		return any(level).(T), nil
 	case string:
 		return any(string(valueBytes)).(T), nil
 	default:

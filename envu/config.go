@@ -1,7 +1,6 @@
 package envu
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -131,8 +130,7 @@ func setConfigField(fieldValue reflect.Value, value string, envVarName string) e
 }
 
 func decodeLogLevel(logLevelStr string) slog.Level {
-	var level slog.Level
-	err := json.Unmarshal([]byte(fmt.Sprintf("\"%s\"", strings.ToUpper(logLevelStr))), &level)
+	level, err := Decode[slog.Level](logLevelStr)
 	if err == nil {
 		return level
 	}
