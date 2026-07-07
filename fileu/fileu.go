@@ -41,6 +41,12 @@ func MustEnsureDir(path string) {
 	}
 }
 
+func MustEnsureDirWithPerm(path string, mode os.FileMode) {
+	if err := EnsureDirWithPerm(path, mode); err != nil {
+		panic(err)
+	}
+}
+
 func RemoveFilesWithPrefix(dir string, filePrefix string) error {
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
