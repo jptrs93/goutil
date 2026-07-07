@@ -25,6 +25,16 @@ func EnsureDir(path string) error {
 	return nil
 }
 
+func EnsureDirWithPerm(path string, mode os.FileMode) error {
+	if err := os.MkdirAll(path, mode); err != nil {
+		return fmt.Errorf("creating dir %q: %w", path, err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		return fmt.Errorf("chmod dir %q: %w", path, err)
+	}
+	return nil
+}
+
 func MustEnsureDir(path string) {
 	if err := os.MkdirAll(path, os.ModePerm); err != nil {
 		panic(fmt.Sprintf("failed creating dir %v: %v", path, err))
