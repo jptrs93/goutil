@@ -15,6 +15,7 @@ type Sub[T any] struct {
 	InitialValue      T
 	InitialValueValid bool
 
+	onFull      func()
 	unsubscribe func()
 }
 
@@ -35,7 +36,11 @@ func NewPubSub[T any](existing T, chanBuffer int) *PubSub[T] {
 	return s
 }
 
-func (s *PubSub[T]) Subscribe(f func(T, T) bool) *Sub[T] {
+// The optional onFull is called every time a notification is dropped because
+// this subscriber's channel is full, so that a reader too slow for the stream
+// can be told rather than left with a silently stale view. It runs on the
+// notifying goroutine but outside the lock, so it is free to unsubscribe.
+func (s *PubSub[T]) Subscribe(f func(T, T) bool, onFull ...func()) *Sub[T] {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -47,6 +52,9 @@ func (s *PubSub[T]) Subscribe(f func(T, T) bool) *Sub[T] {
 	sub := &Sub[T]{
 		Filter: f,
 		Ch:     make(chan T, buffer),
+	}
+	if len(onFull) > 0 {
+		sub.onFull = onFull[0]
 	}
 	if p := s.last.Load(); p != nil {
 		sub.InitialValue = *p
@@ -91,9 +99,10 @@ func (s *PubSub[T]) Notify(value T) {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	full := s.notifyLocked(value)
+	s.mu.Unlock()
 
-	s.notifyLocked(value)
+	runAll(full)
 }
 
 func (s *PubSub[T]) UpdateAndNotify(update func(existing T) T) T {
@@ -103,24 +112,28 @@ func (s *PubSub[T]) UpdateAndNotify(update func(existing T) T) T {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	var existing T
 	if p := s.last.Load(); p != nil {
 		existing = *p
 	}
 	value := update(existing)
-	s.notifyLocked(value)
+	full := s.notifyLocked(value)
+	s.mu.Unlock()
+
+	runAll(full)
 
 	return value
 }
 
-func (s *PubSub[T]) notifyLocked(value T) {
+// Returns the onFull callbacks of the subscribers this notification was dropped
+// for, for the caller to run once it has released the lock.
+func (s *PubSub[T]) notifyLocked(value T) []func() {
 	var existing T
 	if p := s.last.Load(); p != nil {
 		existing = *p
 	}
 
+	var full []func()
 	for _, sub := range s.subs {
 		if sub.Filter != nil && !sub.Filter(existing, value) {
 			continue
@@ -129,7 +142,17 @@ func (s *PubSub[T]) notifyLocked(value T) {
 		case sub.Ch <- value:
 		default:
 			slog.Warn("subscription channel full, dropping notification")
+			if sub.onFull != nil {
+				full = append(full, sub.onFull)
+			}
 		}
 	}
 	s.last.Store(&value)
+	return full
+}
+
+func runAll(fs []func()) {
+	for _, f := range fs {
+		f()
+	}
 }

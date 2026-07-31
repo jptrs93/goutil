@@ -29,7 +29,7 @@ func TestZeroValueUsable(t *testing.T) {
 }
 
 func TestValueOK(t *testing.T) {
-	ps := NewPubSub[string](1)
+	var ps PubSub[string]
 
 	if v, ok := ps.ValueOK(); ok || v != "" {
 		t.Fatalf("ValueOK() = %q, %v; want \"\", false", v, ok)
@@ -40,8 +40,37 @@ func TestValueOK(t *testing.T) {
 	}
 }
 
+func TestNewPubSubExistingValue(t *testing.T) {
+	ps := NewPubSub("a", 2)
+
+	if v, ok := ps.ValueOK(); !ok || v != "a" {
+		t.Fatalf("ValueOK() = %q, %v; want \"a\", true", v, ok)
+	}
+
+	sub := ps.Subscribe(func(old, new string) bool { return old != new })
+	defer sub.Unsubscribe()
+
+	if !sub.InitialValueValid || sub.InitialValue != "a" {
+		t.Fatalf("InitialValue = %q, %v; want \"a\", true", sub.InitialValue, sub.InitialValueValid)
+	}
+
+	ps.Notify("a")
+	if len(sub.Ch) != 0 {
+		t.Fatalf("len(sub.Ch) = %d, want 0", len(sub.Ch))
+	}
+
+	ps.Notify("b")
+	if got := <-sub.Ch; got != "b" {
+		t.Fatalf("received %q, want \"b\"", got)
+	}
+
+	if got := ps.UpdateAndNotify(func(existing string) string { return existing + "c" }); got != "bc" {
+		t.Fatalf("UpdateAndNotify returned %q, want \"bc\"", got)
+	}
+}
+
 func TestSubscribeInitialValue(t *testing.T) {
-	ps := NewPubSub[int](4)
+	ps := NewPubSub(0, 4)
 	ps.Notify(3)
 
 	sub := ps.Subscribe(nil)
@@ -56,7 +85,7 @@ func TestSubscribeInitialValue(t *testing.T) {
 }
 
 func TestFilterSeesPreviousValue(t *testing.T) {
-	ps := NewPubSub[int](4)
+	ps := NewPubSub(0, 4)
 
 	var pairs [][2]int
 	sub := ps.Subscribe(func(old, new int) bool {
@@ -90,7 +119,7 @@ func TestFilterSeesPreviousValue(t *testing.T) {
 }
 
 func TestUpdateAndNotify(t *testing.T) {
-	ps := NewPubSub[int](4)
+	ps := NewPubSub(0, 4)
 
 	sub := ps.Subscribe(nil)
 	defer sub.Unsubscribe()
@@ -113,7 +142,7 @@ func TestUpdateAndNotify(t *testing.T) {
 }
 
 func TestUpdateAndNotifyConcurrent(t *testing.T) {
-	ps := NewPubSub[int](0)
+	ps := NewPubSub(0, 0)
 
 	const goroutines, increments = 8, 500
 
@@ -135,7 +164,7 @@ func TestUpdateAndNotifyConcurrent(t *testing.T) {
 }
 
 func TestUnsubscribeStopsDelivery(t *testing.T) {
-	ps := NewPubSub[int](4)
+	ps := NewPubSub(0, 4)
 
 	a := ps.Subscribe(nil)
 	b := ps.Subscribe(nil)
@@ -158,14 +187,14 @@ func TestUnsubscribeStopsDelivery(t *testing.T) {
 }
 
 func TestUnsubscribeTwice(t *testing.T) {
-	ps := NewPubSub[int](1)
+	ps := NewPubSub(0, 1)
 	sub := ps.Subscribe(nil)
 	sub.Unsubscribe()
 	sub.Unsubscribe()
 }
 
 func TestDropsWhenChannelFull(t *testing.T) {
-	ps := NewPubSub[int](1)
+	ps := NewPubSub(0, 1)
 	sub := ps.Subscribe(nil)
 	defer sub.Unsubscribe()
 
@@ -183,6 +212,43 @@ func TestDropsWhenChannelFull(t *testing.T) {
 	}
 }
 
+func TestOnFullCalledWhenChannelFull(t *testing.T) {
+	ps := NewPubSub(0, 1)
+
+	var calls int
+	// Unsubscribing from the callback is the point of running it outside the
+	// lock, so the test does it rather than merely counting.
+	var sub *Sub[int]
+	sub = ps.Subscribe(nil, func() {
+		calls++
+		sub.Unsubscribe()
+	})
+
+	ps.Notify(1)
+	if calls != 0 {
+		t.Fatalf("onFull called %d times before the channel filled", calls)
+	}
+
+	ps.Notify(2)
+	if calls != 1 {
+		t.Fatalf("onFull called %d times, want 1", calls)
+	}
+
+	ps.Notify(3)
+	if calls != 1 {
+		t.Fatalf("onFull called %d times after unsubscribing, want 1", calls)
+	}
+}
+
+func TestOnFullOptional(t *testing.T) {
+	ps := NewPubSub(0, 1)
+	sub := ps.Subscribe(nil)
+	defer sub.Unsubscribe()
+
+	ps.Notify(1)
+	ps.Notify(2)
+}
+
 func TestNilPubSubNotify(t *testing.T) {
 	var ps *PubSub[int]
 	ps.Notify(1)
@@ -192,7 +258,7 @@ func TestNilPubSubNotify(t *testing.T) {
 }
 
 func TestConcurrentSubscribeNotifyUnsubscribe(t *testing.T) {
-	ps := NewPubSub[int](8)
+	ps := NewPubSub(0, 8)
 
 	var producers, consumers sync.WaitGroup
 	stop := make(chan struct{})
