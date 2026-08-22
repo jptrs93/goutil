@@ -23,8 +23,13 @@ func (h *PlainLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (h *PlainLogHandler) Handle(ctx context.Context, r slog.Record) error {
 	var logContext string
-	if lc := GetLogContext(ctx); lc != nil {
-		logContext = lc.CachedStr
+	if lc := GetContext(ctx); lc != nil && (len(lc.KVs) > 0 || len(lc.Tags) > 0) {
+		parts := make([]string, 0, len(lc.KVs)+len(lc.Tags))
+		for _, kv := range lc.KVs {
+			parts = append(parts, fmt.Sprintf("%s=%v", kv.K, kv.V))
+		}
+		parts = append(parts, lc.Tags...)
+		logContext = " [" + strings.Join(parts, ", ") + "]"
 	}
 
 	// make the level strings all the same length
