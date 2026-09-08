@@ -1,7 +1,6 @@
 package pubsubu
 
 import (
-	"log/slog"
 	"sync"
 	"sync/atomic"
 )
@@ -36,10 +35,9 @@ func NewPubSub[T any](existing T, chanBuffer int) *PubSub[T] {
 	return s
 }
 
-// The optional onFull is called every time a notification is dropped because
-// this subscriber's channel is full, so that a reader too slow for the stream
-// can be told rather than left with a silently stale view. It runs on the
-// notifying goroutine but outside the lock, so it is free to unsubscribe.
+// A full subscriber is closed and unsubscribed, making loss explicit to its
+// reader. The optional onFull callback runs once on the notifying goroutine
+// outside the lock, after the channel has been closed.
 func (s *PubSub[T]) Subscribe(f func(T, T) bool, onFull ...func()) *Sub[T] {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -125,8 +123,7 @@ func (s *PubSub[T]) UpdateAndNotify(update func(existing T) T) T {
 	return value
 }
 
-// Returns the onFull callbacks of the subscribers this notification was dropped
-// for, for the caller to run once it has released the lock.
+// Returns overflow callbacks for the caller to run after releasing the lock.
 func (s *PubSub[T]) notifyLocked(value T) []func() {
 	var existing T
 	if p := s.last.Load(); p != nil {
@@ -134,19 +131,24 @@ func (s *PubSub[T]) notifyLocked(value T) []func() {
 	}
 
 	var full []func()
+	kept := s.subs[:0]
 	for _, sub := range s.subs {
 		if sub.Filter != nil && !sub.Filter(existing, value) {
+			kept = append(kept, sub)
 			continue
 		}
 		select {
 		case sub.Ch <- value:
+			kept = append(kept, sub)
 		default:
-			slog.Warn("subscription channel full, dropping notification")
+			close(sub.Ch)
 			if sub.onFull != nil {
 				full = append(full, sub.onFull)
 			}
 		}
 	}
+	clear(s.subs[len(kept):])
+	s.subs = kept
 	s.last.Store(&value)
 	return full
 }

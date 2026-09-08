@@ -193,7 +193,7 @@ func TestUnsubscribeTwice(t *testing.T) {
 	sub.Unsubscribe()
 }
 
-func TestDropsWhenChannelFull(t *testing.T) {
+func TestClosesWhenChannelFull(t *testing.T) {
 	ps := NewPubSub(0, 1)
 	sub := ps.Subscribe(nil)
 	defer sub.Unsubscribe()
@@ -207,8 +207,13 @@ func TestDropsWhenChannelFull(t *testing.T) {
 	if got := <-sub.Ch; got != 1 {
 		t.Fatalf("received %d, want 1", got)
 	}
-	if got := ps.Value(); got != 2 {
-		t.Fatalf("Value() = %d, want 2", got)
+	if _, ok := <-sub.Ch; ok {
+		t.Fatal("overflowed subscriber is still open")
+	}
+	ps.Notify(3)
+	sub.Unsubscribe()
+	if got := ps.Value(); got != 3 {
+		t.Fatalf("Value() = %d, want 3", got)
 	}
 }
 
